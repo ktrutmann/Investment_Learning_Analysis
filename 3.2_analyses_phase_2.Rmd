@@ -1,0 +1,297 @@
+---
+title: 'Reported Statistics Phase two'
+output: 
+    html_document:
+        toc: true
+        toc_float: yes
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+library(lme4)
+library(lmerTest)
+library(lmtest)
+library(sandwich)  # For clustered SEs
+library(stargazer)
+library(effects)
+library(car)
+library(tidyverse)
+
+# Loading data
+all_complete_tables <- str_subset(dir('Output/Tables/'), 'complete')
+most_recent <- max(str_extract(all_complete_tables, '\\d{4}-\\d{2}-\\d{2}'))
+
+complete_table <- read_delim(str_c('Output//Tables//',
+                                 str_subset(all_complete_tables, most_recent))[1], delim = ';')
+
+dat_main_long <- read_delim('..//Data//Clean//all_participants_long_main_main_study.csv',   
+                            delim = ';')
+
+col_set <- c('lightgrey', 'grey', 'darkgrey', 'black')
+```
+
+The following file presents the analyses as they are reported in the main paper in the order in which they are reported in the paper. The chunk names are also mentioned in the `.tex` files beside where the results are reported.
+This file contains all analyses reported for phase two of the experiment, where the conditional manipulations took place. For phase one or the appendix see the other files.
+
+<!-- #################################################################### -->
+# Trading Behavior
+
+```{r earnings_by_group}
+dat_prepared <- dat_main_long %>%
+  filter(i_round_in_block == max(i_round_in_block, na.rm = TRUE),
+    i_block > 1) %>%
+  dplyr::select(participant_code, hold, cash, price, condition) %>%
+  mutate(earnings = (cash + hold * price) - 2500) %>%
+  group_by(participant_code, condition) %>%
+  summarize(earnings = sum(earnings))
+
+dat_prepared %>%
+  group_by(condition) %>%
+  summarize(derp = mean(earnings))
+
+summary(lm(earnings ~ condition, data = dat_prepared))
+
+qplot(dat_prepared$earnings)
+```
+
+```{r rationality_by_condition}
+summary(lm(hold ~ rational_hold * condition,
+  data = filter(dat_main_long, i_block > 1)))
+```
+
+Checking the frequency of investments (i.e. in how many periods they were invested) for the different conditions.
+```{r inv_frequency_treatments}
+dat_main_long %>%
+  filter(i_block > 1) %>%
+  group_by(condition) %>%
+  summarize(avg_hold = mean(hold != 0) * 100)
+
+    condition    avg_hold_all
+  <chr>               <dbl>
+1 baseline             82.5
+2 probs_shown          77.3
+3 states_shown         86.3
+
+```
+
+<!-- #################################################################### -->
+# The Role of Beliefs
+Check whether they adhere to the Bayesian probabilities more when being shown them.
+```{r bayes_beliefs_partial_info}
+dat_prepared <- dat_main_long %>%
+  filter(i_block > 1, condition != 'states_shown') %>%
+  transmute(condition = factor(condition),
+    belief_diff = belief - bayes_prob_up)
+
+leveneTest(belief_diff ~ condition, dat_prepared, center = 'median')
+
+dat_prepared %>%
+  group_by(condition) %>%
+  summarise(var = var(belief_diff))
+```
+
+
+<!-- -------------------------------------------------------------------- -->
+## Belief Formation
+
+Testing the 3-way interaction of price_move:position:condition.
+Remove the last term from the model and switch the filter to only include one condition to get the results for the interaction per condition.
+```{r updating_treatment_test}
+dat_prepared <- dat_main_long %>%
+  filter(i_block > 1,
+         position_end_of_last_period %in% c('Gain', 'Loss'),
+         # updating_type != 'Wrong'
+         condition != 'states_shown') %>%
+  dplyr::mutate(price_move_from_last_corrected = dplyr::recode(
+      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+    position_end_of_last_period = dplyr::recode(
+      position_end_of_last_period, 'Loss' = -.5, 'Gain' = .5),
+    condition = dplyr::recode(
+      condition, 'baseline' = -.5, 'probs_shown' = .5),
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100)
+
+belief_updates_treatment <- lm(belief_diff_bayes_corrected_flipped ~
+  position_end_of_last_period * price_move_from_last_corrected * condition,
+   data = dat_prepared)
+
+coeftest(belief_updates_treatment,
+         vcovCL(belief_updates_treatment,
+           cluster = ~dat_prepared$participant_code))
+```
+
+Figure showing the updating interaction for the different treatments.
+Uncomment the `updating_type != 'Wrong'` in the first filter statement to produce the plot excluding updates in the wrong direction.
+```{r updating_treatment}
+dat_prepared <- dat_main_long %>%
+  filter(position_end_of_last_period != 'No Returns',
+         condition != 'states_shown',
+         # updating_type != 'Wrong',
+         i_block > 1) %>%
+  mutate(belief_diff_bayes_corrected_flipped =
+    belief_diff_bayes_corrected_flipped / 100)
+
+dat_prepared_1 <- dat_prepared %>%
+filter(position_end_of_last_period != 'Not Invested') %>%
+group_by(position_end_of_last_period,
+  price_move_from_last_corrected, condition) %>%
+summarize(mean_update = mean(belief_diff_bayes_corrected_flipped),
+          SE = sd(belief_diff_bayes_corrected_flipped) / sqrt(n()),
+          CI_90_lower = mean_update - SE * qt(.95, n()),
+          CI_90_upper = mean_update + SE * qt(.95, n()))
+
+dat_prepared_2 <- dat_prepared %>%
+  filter(position_end_of_last_period == 'Not Invested') %>%
+  group_by(condition) %>%
+  summarize(mean_update = mean(
+              belief_diff_bayes_corrected_flipped, na.rm = TRUE),
+            SE = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE) /
+              sqrt(length(belief_diff_bayes_corrected_flipped)),
+            CI_90_lower = mean_update - SE * qt(.95, n()),
+            CI_90_upper = mean_update + SE * qt(.95, n())) %>%
+  add_column(tibble(position_end_of_last_period = 'Not Invested',
+    price_move_from_last_corrected = ''))
+
+dat_prepared <- full_join(dat_prepared_1, dat_prepared_2)
+
+ggplot(dat_prepared,
+       aes(x = position_end_of_last_period, y = mean_update,
+          fill = condition, group = condition)) +
+  facet_grid(cols = vars(price_move_from_last_corrected),
+    scale = 'free_x', space = 'free_x') +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
+                position = position_dodge(.9), width = .1) +
+  scale_fill_manual(values = rep(c(col_set[1], col_set[2], col_set[3]), 2),
+    labels = rep(c('No Info.', 'Partial Info.', 'Full Info.'), 2)) +
+  labs(x = 'Price Movement and Position',
+    y = 'Mean Corrected Belief Update', fill = 'Treatment')
+
+# ggsave('updating_treatments_wrong_excluded_bars.pdf',  device = 'pdf',
+#   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
+```
+
+
+<!-- #################################################################### -->
+# The Effects of Providing Information on Trades
+
+## Influence on trades
+
+```{r pgr_plr_cor}
+cor.test(complete_table$plr_12, complete_table$plr_34)
+
+cor.test(complete_table$pgr_12, complete_table$pgr_34)
+```
+
+Investigating the differences of PLR and PGR between blocks.
+```{r pgr_plr_phase_two_diffs}
+complete_table %>%
+  group_by(main_condition) %>%
+  summarise(avg_diff_plr = mean(plr_diff_12_34),
+    avg_diff_pgr = mean(pgr_diff_12_34))
+
+  complete_table %>%
+  group_by(main_condition) %>%
+  summarise(avg_plr = mean(plr_34),
+    avg_pgr = mean(pgr_34))
+
+names(complete_table)
+```
+
+```{r beliefs_at_trades_phase_2}
+dat_main_long %>%
+  dplyr::filter(abs(transaction) == 1,
+    position != 'No Returns',
+    i_block > 1) %>%                             
+  group_by(transaction, position, condition) %>%
+  summarize(avg_belief = mean(belief / 100),
+    sd_belief = sd(belief / 100),
+    avg_bayes = mean(bayes_prob_up),
+    avg_distance_to_bayes = mean(bayes_prob_up - belief / 100))
+```
+
+<!-- -------------------------------------------------------------------- -->
+## Influence on DE
+
+Checking the within subject effect of the treatments in phase two (first separately per condition and then in a linear model).
+The rational benchmark value from the first phase is subtracted from the _states shown_ DE numbers as the benchmark in this treatment changes to 0.
+```{r de_conditions_treatment}
+dat_prepared <- complete_table %>%
+  mutate(de_diff_12_34 = if_else(main_condition == 'states_shown',
+    de_diff_12_34 - .78, de_diff_12_34))
+
+t.test(filter(dat_prepared, main_condition == 'baseline')$de_diff_12_34,
+  alternative = 'less')
+
+t.test(filter(dat_prepared, main_condition == 'probs_shown')$de_diff_12_34,
+  alternative = 'less')
+
+t.test(filter(dat_prepared, main_condition == 'states_shown')$de_diff_12_34,
+  alternative = 'less')
+
+summary(lm(de_diff_12_34 ~ main_condition, data = dat_prepared))
+```
+
+
+<!-- #################################################################### -->
+# Individual Differences
+
+Looking for individual differences in the belief updating:
+Add the variables `age`, `gender`, `engagement`, `cogn_rpm_total_points` or `risk_soep_general` to the `lm()` call. 
+```{r belief_update_individual_vars}
+dat_prepared <- dat_main_long %>%
+  filter(i_block > 1, position_end_of_last_period %in% c('Gain', 'Loss'),
+         # updating_type != 'Wrong'
+         condition == 'probs_shown') %>%
+  dplyr::mutate(price_move_from_last_corrected = dplyr::recode(
+      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+    position_end_of_last_period = dplyr::recode(
+      position_end_of_last_period, 'Loss' = -.5, 'Gain' = .5),
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100)
+
+belief_updates_treatment <- lm(belief_diff_bayes_corrected_flipped ~
+  position_end_of_last_period * price_move_from_last_corrected + 
+  position_end_of_last_period : price_move_from_last_corrected : age,
+   data = dat_prepared)
+
+coeftest(belief_updates_treatment,
+         vcovCL(belief_updates_treatment,
+           cluster = ~dat_prepared$participant_code))
+```
+
+
+Looking for individual differences in the improvement of the DE from phase one to two.
+```{r de_strategy_on_de_diff}
+with(filter(complete_table, main_condition == 'probs_shown'),
+  cor.test(strategy_DE, de_diff_12_34, method = 'spearman'))
+
+with(filter(complete_table, main_condition == 'states_shown'),
+  cor.test(strategy_DE, de_diff_12_34, method = 'spearman'))
+```
+```{r rational_strategy_on_de_diff}
+with(filter(complete_table, main_condition == 'states_shown'),
+  cor.test(strategy_rational, de_diff_12_34, method = 'spearman'))
+```
+```{r age_on_de_diff}
+cor.test(complete_table$age, complete_table$de_diff_12_34)
+```
+```{r gender_on_de_diff}
+t.test(de_diff_12_34 ~ gender, data = complete_table)
+```
+```{r intelligence_on_de_diff}
+with(filter(complete_table, main_condition == 'probs_shown'),
+  cor.test(ravens_matrices_score, de_diff_12_34,
+  method = 'spearman'))
+
+with(filter(complete_table, main_condition == 'states_shown'),
+  cor.test(ravens_matrices_score, de_diff_12_34,
+  method = 'spearman'))
+```
+```{r experience_on_de_diff}
+with(filter(complete_table, main_condition == 'probs_shown'),
+  cor.test(investment_experience, de_diff_12_34,
+  method = 'spearman'))
+
+with(filter(complete_table, main_condition == 'states_shown'),
+  cor.test(investment_experience, de_diff_12_34,
+  method = 'spearman'))
+```

@@ -1,0 +1,578 @@
+---
+title: 'Reported Statistics Phase one'
+output: 
+    html_document:
+        toc: true
+        toc_float: yes
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+library(lme4)
+library(lmerTest)
+library(lmtest)
+library(sandwich)  # For clustered SEs
+library(stargazer)
+library(MASS) # For ordinal logreg
+library(effects)
+library(gridExtra)
+library(ordinal)
+library(tidyverse)
+
+theme_set(theme_minimal())
+# Color secifications for the plots
+col_set <- c('lightgrey', 'grey', 'darkgrey', 'black')
+
+# Loading data
+all_complete_tables <- str_subset(dir('Output/Tables/'), 'complete')
+most_recent <- max(str_extract(all_complete_tables, '\\d{4}-\\d{2}-\\d{2}'))
+
+complete_table <- read_delim(str_c('Output//Tables//',
+                                 str_subset(all_complete_tables, most_recent))[1], delim = ';')
+
+dat_main_long <- read_delim('..//Data//Clean//all_participants_long_main_main_study.csv',   
+                            delim = ';')
+```
+
+The following file presents the analyses as they are reported in the main paper in the order in which they are reported in the paper. The chunk names are also mentioned in the .tex files beside where the results are reported.
+This file contains all analyses before and including the reporting of phase one of the experiment. For phase two or the appendix see the other files.
+
+
+<!-- #################################################################### -->
+# Sample Demographics
+
+The study was conducted with **`r nrow(complete_table)`** participants with a mean age
+of `r round(mean(complete_table$age), 2)`.
+`r sum(complete_table$is_student == 'Ja')` reported being a student.
+
+
+```{r demographics}
+knitr::kable(table(complete_table$gender), col.names = c('Gender', 'Freq.'),
+  caption = 'Gender Distribution')
+
+knitr::kable(round(prop.table(table(complete_table$gender)) * 100, 2),
+  col.names = c('Gender', 'Prop'), caption = 'Gender Distribution Proportions')
+
+knitr::kable(round(prop.table(table(complete_table$investment_experience)) * 100, 2),
+  col.names = c('Investment Experience', 'Proportion'))
+
+round(sum(complete_table$is_student == 'Ja') * 100, 2)
+
+```
+
+Here we show the actual payoff of the participants as well as the average payoff a risk neutral Bayesian agent would have earned. The exchange rate from points to CHF was __.06__. Each "win" in the probability matching task was worth 1 point.
+```{r earnings}
+complete_table %>%
+  mutate(rational_payoff_chf = max(0, rational_payoff * .06 + 15) + 10) %>%
+  summarise(avg_earnings = mean(participant_payoff * .06 + 10),
+            avg_rational_earnings = mean(rational_payoff_chf)) %>%
+  round(2) %>%
+  knitr::kable(col.names = c('Average Participant Earnings',
+    'Average Earnings Rational Benchmark'))
+```
+
+```{r engagement_distribution}
+knitr::kable(table(complete_table$engagement),
+  col.names = c('Engagement Value', 'Freq'),
+  caption = 'Distribution of answers to the "Engagement Question" (7-point Likert-scale)')
+
+median(complete_table$engagement)
+```
+
+
+<!-- #################################################################### -->
+# Trading Behavior first phase
+
+Average holding/shorting frequency (what percentage of the periods did they hold or short the asset on average?):
+```{r avg_hold_short}
+dat_main_long %>%
+  filter(i_block <= 1) %>%
+  summarize(average_hold = mean(hold == 1),
+    average_short = mean(hold == -1)) %>%
+  knitr::kable()
+```
+
+Average (and SD) number of transactions in the first phase:
+```{r avg_transaction, message = FALSE}
+dat_main_long %>%
+  filter(i_block <= 1) %>%
+  group_by(participant_code) %>%
+  summarize(transaction_per_participant = sum(transaction != 0)) %>%
+  summarize(average_transactions = mean(transaction_per_participant),
+    average_transaction_sd = sd(transaction_per_participant)) %>%
+  knitr::kable()
+```
+
+Average (and SD) number of "jumps" in the first phase:
+```{r avg_jumps, message = FALSE}
+dat_main_long %>%
+  filter(i_block <= 1) %>%
+  group_by(participant_code) %>%
+  summarize(transaction_per_participant = sum(abs(transaction) == 2)) %>%
+  summarize(average_transactions = mean(transaction_per_participant),
+    average_transaction_sd = sd(transaction_per_participant)) %>%
+  knitr::kable()
+```
+
+Average length of an investment period:
+```{r avg_inv_length}
+summarize(complete_table,
+  all_avg_hold_length = (avg_hold_length_1 * n_holds_1 +
+    avg_hold_length_2 * n_holds_2) / (n_holds_1 + n_holds_2),
+  all_avg_short_length = (avg_short_length_1 * n_shorts_1 +
+    avg_short_length_2 * n_shorts_2) / (n_shorts_1 + n_shorts_2)) %>%
+  mutate(all_avg_short_length = replace_na(all_avg_short_length, 0)) %>%
+  # Excluding those who held almost the whole time:
+  mutate(all_avg_hold_length = ifelse(
+    all_avg_hold_length > 35, NA, all_avg_hold_length),
+    all_avg_short_length = ifelse(
+      all_avg_short_length > 35, NA, all_avg_short_length)) %>%
+  summarize(avg_hold_length = mean(all_avg_hold_length, na.rm = TRUE),
+    sd_hold_lengths = sd(all_avg_hold_length, na.rm = TRUE),
+    avg_short_length = mean(all_avg_short_length, na.rm = TRUE),
+    sd_short_lengths = sd(all_avg_short_length, na.rm = TRUE)) %>%
+  knitr::kable()
+```
+
+Investing difference in the good vs. bad period:
+```{r inv_by_state_table}
+this_tab <- dat_main_long %>%
+  filter(i_block <= 1) %>%
+  group_by(state) %>%
+  count(hold) %>%
+  pivot_wider(names_from = hold, values_from = n) %>%
+  filter(!is.na(state))
+
+  knitr::kable(this_tab)
+
+  chisq.test(this_tab)
+
+```
+_(The result is robust to exclusion.)_
+
+This plot looks at the price developments after a trade.
+The price movements are flipped for short-sales and for liquidations of short sales (because we want to see what would have happened had they held the short further).
+Jumps from long to short and vice versa are counted twice.
+Once as a liquidation and once as an investment.
+```{r price_after_trades}
+jumps <- which(abs(dat_main_long$transaction) == 2)
+target_moves <- c(which(dat_main_long$transaction != 0), jumps)
+
+# Jumps get a second entry
+moves_after_decision <- tibble(
+  original_move_ix = rep(target_moves, each = 6),
+  move_id = rep(seq_along(target_moves), each = 6),
+  target_shift = rep(0:5, length(target_moves)),
+  second_entry = c(rep(FALSE, (length(target_moves) - length(jumps)) * 6),
+                rep(TRUE, length(jumps) * 6)))  %>%
+  mutate(move_ix = original_move_ix + target_shift)
+
+full_shift_df <- dat_main_long %>%
+  dplyr::select(hold, transaction, price, bayes_prob_up, position) %>%
+  dplyr::slice(moves_after_decision$move_ix) %>%
+  bind_cols(moves_after_decision) %>%
+  group_by(move_id) %>%  # Normalizing price
+  mutate(price_normal = price - price[target_shift == 0],
+    original_hold = hold[target_shift == 0],
+    original_move = factor(transaction[target_shift == 0]),
+    price_normal = case_when(
+      original_hold == 0 & original_move == -1 ~ - price_normal,
+      original_hold == -1 & !second_entry ~ - price_normal,
+      original_hold == 1 & second_entry ~ - price_normal,
+      TRUE ~ price_normal),
+    original_position = position[target_shift == 0],
+    original_position = case_when(
+      original_position %in% c('Gain', 'Loss') ~ 'Liquidate',
+      second_entry ~ 'Not Invested',
+      TRUE ~ original_position),
+    n_blocks = length(unique(i_block))) %>%  # Removing block overlaps
+  ungroup() %>%
+  filter(n_blocks == 1,
+    original_position != 'No Returns')
+
+dat_prepared <- full_shift_df %>%
+  group_by(original_position, target_shift) %>%
+  summarize(avg_price = mean(price_normal),
+    se = sd(price_normal) / sqrt(n()),
+    ci_upper = avg_price + qt(.9, n()) * se,
+    ci_lower = avg_price - qt(.9, n()) * se,
+    n = n()) %>%
+    mutate(original_position = recode(original_position, 'Not Invested' = 'Invest'))
+
+ggplot(dat_prepared,
+  aes(x = target_shift, y = avg_price, color = original_position)) +
+  geom_hline(yintercept = 0, size = .5) +
+  geom_line(size = 1.25) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper),
+    position = position_dodge(), width = .05) +
+  scale_color_manual(
+    values = c('Invest' = rgb(0.45, 0.65, 0.63), 'Liquidate' = rgb(0.656, 0.856, 0.836))) +
+  labs(x = 'Periods since Transaction', y = 'Normalised Mean Price',
+       color = 'Transaction', group = 'Transaction') +
+  theme(text = element_text(size = 22))
+    # values = c('Invest' = 'Black', 'Liquidate' = '#888888')) +
+
+ggsave('price_after_trades_col.pdf',  device = 'pdf',
+  width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+Now we look at their beliefs at the trades.
+```{r beliefs_at_trades}
+dat_main_long %>%
+  filter(abs(transaction) == 1) %>%
+  mutate(transaction_type = case_when(
+    hold == 0 & transaction == 1 ~ 'Long',
+    hold == 0 & transaction == -1 ~ 'Short',
+    hold == 1 & position == 'Gain' ~ 'Liq. Long Gain', 
+    hold == 1 & position == 'Loss' ~ 'Liq. Long Loss', 
+    hold == -1 & position == 'Gain' ~ 'Liq. Short Gain',
+    hold == -1 & position == 'Loss' ~ 'Liq. Short Loss')) %>%
+  filter(!is.na(transaction_type)) %>%
+  group_by(transaction_type) %>%
+  summarize(avg_belief = mean(belief),
+    sd_belief = sd(belief),
+    avg_bayes = mean(bayes_prob_up * 100),
+    avg_diff = mean(belief - bayes_prob_up * 100)) %>%
+  mutate(across(where(is.numeric), round, 2)) %>%
+  knitr::kable()
+```
+
+During the first two blocks, participants sold an averarge of
+`r round(mean(complete_table$plr_12) * 100, 1)`% of their losses and
+`r round(mean(complete_table$pgr_12) * 100, 1)`% of their gains, leading to a DE measure of
+__`r round(mean(complete_table$de_12), 3)`__.
+
+Checking whether the DE is larger than the rational benchmark.
+```{r DE_test_phase_1}
+t.test(complete_table$de_12 + .78, alternative = 'greater')
+```
+
+```{r event_analysis}
+window <- -3:5 # How many periods before and after switch to look at
+this_dat <- filter(dat_main_long, i_block < 2)
+switches <- which(diff(this_dat$state) != 0) + 1  # Locations of the first period with a new state!
+switch_type <- diff(this_dat$state)[diff(this_dat$state) != 0]
+
+moves_around_switches <- tibble(
+  original_switch_ix = rep(switches, each = length(window)),
+  original_switch_type = as.factor(rep(switch_type, each = length(window))),
+  move_id = rep(seq_along(switches), each = length(window)),
+  shift = rep(window, length(switches)))  %>%
+  mutate(hold_ix = original_switch_ix + shift) %>%
+  filter(hold_ix < nrow(this_dat))
+
+this_dat %>%
+  dplyr::slice(moves_around_switches$hold_ix) %>%
+  bind_cols(moves_around_switches) %>%
+  group_by(move_id) %>% 
+  mutate(n_blocks = length(unique(i_block))) %>%  # Removing block overlaps
+  ungroup() %>%
+  filter(n_blocks == 1) %>%
+  group_by(original_switch_type, shift) %>%
+  summarise(avg_hold = mean(hold, na.rm = TRUE)) %>%
+
+ggplot(aes(x = shift, y = avg_hold, color = original_switch_type,
+  group = original_switch_type)) +
+  geom_line(size = 1) +
+  geom_vline(xintercept = 0, linetype = 'dashed') +
+  labs(x = 'Periods since Switch', y = 'Average Portfolio',
+    group = 'Switch Type', color = 'Switch Type') +
+  scale_color_manual(values = c(col_set[1], col_set[3]),
+    labels = c('Good to Bad', 'Bad to Good'))
+
+ggsave('event_analysis_trades.pdf',  device = 'pdf',
+  width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+<!-- #################################################################### -->
+# Results Phase 1
+
+## The Role of Beliefs
+
+### Predictiveness of Beliefs
+
+Ordered logistic regression to determine how predictive beliefs are for investment decisions.
+```{r olog_beliefs}
+# Order the levels of hold_lead
+dat_prepared <- dat_main_long %>%
+    filter(i_block < 2) %>%
+    mutate(hold_lead = factor(dplyr::lead(hold),
+        levels = c("-1", "0", "1"), ordered = TRUE))
+
+olog_beliefs <- clmm(hold_lead ~ bayes_prob_up + belief +
+  (1 | participant_code),
+  data = dat_prepared)
+coeftest(olog_beliefs)
+```
+_(Robust to exclusion of inattentives!.)_
+
+The same but focusing on trade decisions with a gain/loss dummy.
+```{r olog_beliefs_buy_sell}
+# Order the levels of hold_lead
+dat_prepared <- dat_main_long %>%
+    filter(i_block < 2,
+      abs(transaction) == 1) %>%
+    mutate(hold_lead = factor(dplyr::lead(hold),
+        levels = c("-1", "0", "1"), ordered = TRUE),
+    trade_type = if_else(hold == 0, 'Buy', 'Sell'),
+    belief = belief / 100)
+
+olog_beliefs_trade <- clmm(hold_lead ~ belief + belief:trade_type +
+  (1 | participant_code),
+  data = dat_prepared)
+coeftest(olog_beliefs_trade)
+```
+
+Did higher engagement lead to a "more reasonable" scale in belief reports?
+```{r belief_var_by_engagement}
+dat_prepared <- dat_main_long %>%
+  dplyr::filter(i_block < 2) %>%
+  group_by(participant_code, engagement) %>%
+  summarize(belief_sd = sd(belief, na.rm = TRUE))
+
+cor.test(dat_prepared$engagement, dat_prepared$belief_sd,
+  method = 'spearman')
+```
+
+The standard deviation of participants' belief reports ranges from `r sd_tab['Min.']` to `r sd_tab['Max.']` with an average of `r sd_tab['Mean']`.
+
+```{r beliefs_by_states}
+t.test(belief ~ state,
+  data = filter(dat_main_long, i_block < 2))
+```
+
+<!-- -------------------------------------------------------------------- -->
+### Belief Formation
+Checking whether their beliefs startet at $.5$ at the start of the first two blocks.
+```{r belief_start}
+start_beliefs <- dat_main_long %>%
+  filter(i_round_in_block == 0, i_block < 2) %>%
+  pull(belief)
+
+t.test(start_beliefs - 50)
+```
+On average `r round(mean(start_beliefs == 50) * 100, 2)`% of blocks were started with a belief of $.5$.
+The average starting belief was `r round(mean(start_beliefs), 2)`
+
+
+Numbers about the amount of "inverse updates" in the data.
+```{r update_type_table}
+dat_main_long %>%
+  filter(i_block < 2) %>%
+  count(updating_type) %>%
+  mutate(percentage = round(n * 100 / sum(n), 2)) %>%
+  knitr::kable(caption = 'Was the Update Inverse?')
+```
+
+Checking for a difference in updating strength of up and down movements when not invested.
+```{r not_inv_diff}
+dat_prepared <- dat_main_long %>%
+  filter(position_end_of_last_period != 'No Returns',
+    i_block < 2, updating_type != 'Wrong')
+
+t.test(belief_diff_flipped ~ (position_end_of_last_period == 'Not Invested'),
+  data = dat_prepared)
+```
+
+Figure showing the baseline updating interaction.
+Unmment the `updating_type != 'Wrong'` in the first filter statement to produce the plot excluding updates in the wrong direction.
+```{r updating_baseline_bars, message = FALSE}
+dat_prepared <- dat_main_long %>%
+  filter(position_end_of_last_period != 'No Returns',
+         # updating_type != 'Wrong',
+         i_block < 2) %>%
+  mutate(belief_diff_bayes_corrected_flipped =
+    belief_diff_bayes_corrected_flipped / 100)
+
+dat_prepared_1 <- dat_prepared %>%
+  filter(position_end_of_last_period != 'Not Invested') %>%
+  group_by(position_end_of_last_period, price_move_from_last_corrected) %>%
+  summarise(mean_update = mean(
+              belief_diff_bayes_corrected_flipped, na.rm = TRUE),
+            SE = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE) /
+              sqrt(n()),
+            CI_90_lower = mean_update - SE * qt(.95, n()),
+            CI_90_upper = mean_update + SE * qt(.95, n()))
+
+dat_prepared_2 <- dat_prepared %>%
+  filter(position_end_of_last_period == 'Not Invested') %>%
+  summarise(mean_update = mean(
+              belief_diff_bayes_corrected_flipped, na.rm = TRUE),
+            SE = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE) /
+              sqrt(n()),
+            CI_90_lower = mean_update - SE * qt(.95, n()),
+            CI_90_upper = mean_update + SE * qt(.95, n())) %>%
+  add_column(tibble(position_end_of_last_period = 'Not Invested',
+    price_move_from_last_corrected = ''))
+
+dat_prepared <- full_join(dat_prepared_1, dat_prepared_2)
+
+ggplot(dat_prepared,
+       aes(x = position_end_of_last_period, y = mean_update,
+           fill = price_move_from_last_corrected)) +
+  facet_grid(cols = vars(price_move_from_last_corrected),
+    scale = 'free_x', space = 'free_x') +
+  geom_bar(stat = 'identity') +
+  geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
+                    width = .1, color = tail(col_set, 1)) +
+  scale_fill_manual(name = '', values = c(col_set[1:3])) +
+  labs(x = 'Position and Price Move',
+    y = 'Average Corrected Belief Update') +
+  theme(legend.position = 'none')
+
+# ggsave('updating_baseline_wrong_included_bars.pdf',  device = 'pdf',
+#   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
+```
+
+Checking whether there is an interaction in the updating during the first two blocks. These effects are __effect coded!__ and clustered by participant. Comment out the `updating_type != 'Wrong'` filter to get the results with wrong updates included.
+```{r updating_baseline_test}
+dat_prepared <- dat_main_long %>%
+  filter(i_block < 2,
+         position_end_of_last_period %in% c('Gain', 'Loss'),
+         # updating_type != 'Wrong'
+    ) %>%
+  transmute(price_move_from_last_corrected = dplyr::recode(
+      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+    position_end_of_last_period = dplyr::recode(
+      position_end_of_last_period, 'Loss' = -.5, 'Gain' = .5),
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100,
+    participant_code = participant_code)
+
+belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
+  position_end_of_last_period * price_move_from_last_corrected,
+   data = dat_prepared)
+
+coeftest(belief_updates_baseline,
+         vcovCL(belief_updates_baseline,
+           cluster = ~dat_prepared$participant_code))
+
+summary(belief_updates_baseline)
+```
+_(robust to excluding inattentives)_
+
+
+<!-- -------------------------------------------------------------------- -->
+### Influence of Beliefs on Trades
+
+```{r beliefs_at_trades}
+dat_main_long %>%
+  dplyr::filter(abs(transaction) == 1,
+    position != 'No Returns',
+    i_block < 2) %>%                             
+  group_by(transaction, position) %>%
+  summarize(avg_belief = mean(belief / 100),
+    sd_belief = sd(belief / 100),
+    avg_bayes = mean(bayes_prob_up),
+    avg_distance_to_bayes = mean(bayes_prob_up - belief / 100))
+```
+
+First we look at the made and forgone profit 3 periods after buys or sales (excluding shorts for now).
+```{r forgone_profits}
+max_shift <- 3
+
+target_moves <- with(dat_main_long,
+  which((hold == 0 & transaction == 1) |
+        (hold == 1 & transaction == -1)))
+
+moves_after_decision <- tibble(
+  original_move_ix = rep(target_moves, each = max_shift + 1),
+  move_id = rep(seq_along(target_moves), each = max_shift + 1),
+  target_shift = rep(0:max_shift, length(target_moves)))  %>%
+  mutate(move_ix = original_move_ix + target_shift)
+
+dat_main_long %>%
+  dplyr::select(hold, transaction, price, bayes_prob_up) %>%
+  dplyr::slice(moves_after_decision$move_ix) %>%
+  bind_cols(moves_after_decision) %>%
+  group_by(move_id) %>%  # Normalizing price
+  mutate(price_normal = price - price[target_shift == 0],
+    original_move = factor(transaction[target_shift == 0])) %>%
+  mutate(n_blocks = length(unique(i_block))) %>%  # Removing block overlaps
+  ungroup() %>%
+  filter(n_blocks == 1) %>%
+  group_by(original_move) %>%
+  summarise(avg_move_3 = mean(price_normal[target_shift == max(target_shift)]))
+
+```
+
+Here we test the influence of the beliefs (above Bayes) for the four possible movements:
+  
+  - Going from no investment into a long investment
+  - Going from no invesment into a short investment
+  - Selling a long investment (and the interaction between belief and position)
+  - Buying back a short investment (and the interaction between belief and position)
+
+```{r logregs_individual}
+this_dat <- filter(dat_main_long, i_block < 2) %>%
+  mutate(buy = as_factor(transaction > 0),
+    sell = as_factor(transaction < 0))
+
+# Buying long
+clmm(buy ~ bayes_prob_up + belief +
+  (1 | participant_code), link = 'logit',
+  data = filter(this_dat, hold == 0)) %>%
+  summary()
+
+# Shorting
+clmm(sell ~ bayes_prob_up + belief +
+  (1 | participant_code),
+  link = 'logit', data = filter(this_dat, hold == 0)) %>%
+  summary()
+
+# Selling a long position
+clmm(sell ~ bayes_prob_up + belief * position +
+  (1 | participant_code), link = 'logit',
+  data = filter(this_dat, hold == 1, position %in% c('Gain', 'Loss'))) %>%
+  summary()
+
+# Selling a short position
+clmm(buy ~ bayes_prob_up + belief * position +
+  (1 | participant_code), link = 'logit',
+  data = filter(this_dat, hold == -1, position %in% c('Gain', 'Loss'))) %>%
+  summary()
+```
+
+
+<!-- #################################################################### -->
+# Individual Differences
+
+Checking for three-way interactions between position, price move and a third variable. Add the variables `age`, `gender`, `engagement`, `cogn_rpm_total_points` or `risk_soep_general` to the `lm()` call.  
+```{r vars_on_belief_updating}
+dat_prepared <- dat_main_long %>%
+  filter(i_block < 2,
+         position_end_of_last_period %in% c('Gain', 'Loss'),
+         # updating_type != 'Wrong'
+    ) %>%
+  mutate(price_move_from_last_corrected = dplyr::recode(
+      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+    position_end_of_last_period = dplyr::recode(
+      position_end_of_last_period, 'Loss' = -.5, 'Gain' = .5))
+
+belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
+  position_end_of_last_period * price_move_from_last_corrected * risk_soep_general,
+   data = dat_prepared)
+
+coeftest(belief_updates_baseline,
+         vcovCL(belief_updates_baseline,
+           cluster = ~dat_prepared$participant_code))
+```
+
+Checks on DE differences.
+Put in the following variables from `complete_table`:
+`strategy_DE`, `strategy_rational`, `risk_soep_general`, `ravens_matrices_score`, `investment_experience` and `engagement`.
+
+```{r vars_on_de}
+cor.test(complete_table$loss_aversion, complete_table$de_12,
+  method = 'spearman')
+```
+```{r age_on_de}
+cor.test(complete_table$age, complete_table$de_12)
+```
+```{r gender_on_de}
+t.test(de_12 ~ gender, data = complete_table)
+```
+```{r strategy_on_payoff}
+summary(lm(participant_payoff ~ .,
+  data = dplyr::select(complete_table,
+    participant_payoff, contains('strategy_'))))
+```

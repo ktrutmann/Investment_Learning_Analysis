@@ -1,0 +1,384 @@
+
+# Old analyses:
+
+# DE as outcome
+
+## Baseline DE
+
+__Q:__ Does the DE differ significantly from the benchmark of $-.5$?
+```{r DE_Baseline}
+lm(DE_12 + .5 ~ main_condition, data = complete_table) %>% 
+    summary()
+```
+
+__A:__ It does differ significantly, while the conditions do not differ from each other.
+
+
+## Condition Effect on DE
+__Q:__ How do the DE measures differ in the treatment blocks?
+```{r DE_treatment_blocks}
+# Benchmark correct:
+dat_prepared <- complete_table %>%
+    mutate(DE_34 = ifelse(main_condition == 'states_shown', DE_34, DE_34 + .78))
+
+m_list$DE_34_condition <- lm(data = dat_prepared,
+          formula = DE_34 ~ main_condition)
+
+summary(m_list$DE_34_condition)
+
+m_list$DE_treatment <- lm
+
+```
+
+__A:__
+
+
+
+__Q:__ Is there a significant effect of the "probabilities shown" condition? Alternatively, is there an interaction between the blocks and conditions, especially between probabilities shown and the baseline-baseline condition (we thus exclude the states shown condition from this analysis). We would expect the DE measure to not move at all in the baseline-baseline group, but decrease in the probabilities shown condition.
+
+```{r temp1}
+# DE_gathered <- complete_table %>%
+#     # filter(main_condition != 'states_shown') %>%
+#     dplyr::select(DE_12, DE_34, main_condition, participant_code) %>%
+#     gather(key = block, value = DE, -main_condition, -participant_code) %>%
+#     filter(!is.na(main_condition))
+# 
+# # This weird way is apparently correct way to do a mixed methods ANOVA with aov()
+# m1 <- aov(data = DE_gathered,
+#           formula = DE ~ main_condition + main_condition*block + Error(participant_code/block))
+# 
+# summary(m1) # "Marginaly significant" interaction
+```
+__A:__ There seems to be a "marginally significant" interaction. No main effect can be found, which most likely stemms from the increase of the DE measure in the baseline-baseline group (see `plotting.R` for the pattern). 
+
+__Q:__
+Is there a difference between conditions in the difference between blocks?
+<!-- TODO: Expand -->
+```{r DE_diff_by_condition}
+dat_prepared <- complete_table %>%
+    filter(!is.na(main_condition)) %>%
+    mutate(is_prob_shown = main_condition == 'probs_shown',
+           is_states_shown = main_condition == 'states_shown',
+           # Correct for benchmark:
+           DE_diff_12_34 = ifelse(main_condition == 'states_shown',
+                                  DE_diff_12_34 - .78, DE_diff_12_34))
+
+m_list$DE_diff_condition <- lm(data = dat_prepared,
+          formula = DE_diff_12_34 ~ is_prob_shown + is_states_shown)
+
+summary(m_list$DE_diff_condition)
+
+
+#### Same with excluding participants ---------------------------
+DE_gathered <- complete_table %>%
+    filter(!excluded) %>%
+    dplyr::select(DE_diff_12_34, main_condition, participant_code) %>%
+    gather(key = block, value = DE_diff, -main_condition, -participant_code) %>%
+    filter(!is.na(main_condition)) %>%
+    mutate(is_prob_shown = main_condition == 'probs_shown',
+           is_states_shown = main_condition == 'states_shown')
+
+m_list$DE_diff_condition_excl <- lm(data = DE_gathered,
+          formula = DE_diff ~ is_prob_shown + is_states_shown)
+
+summary(m_list$DE_diff_condition_excl)
+```
+
+
+__Q:__ Do the differences between the blocks differ significantly from 0?
+``` {r temp3}
+m_list$DE_diff_bl <- lm(data = filter(complete_table, main_condition == 'baseline'),
+                        formula = DE_diff_12_34 ~ 1)
+m_list$DE_diff_ps <- lm(data = filter(complete_table, main_condition == 'probs_shown'),
+                        formula = DE_diff_12_34 ~ 1)
+m_list$DE_diff_ss <- lm(data = filter(complete_table, main_condition == 'states_shown'),
+                        formula = DE_diff_12_34 ~ 1)
+```
+
+
+## Effect of beliefs on a EV trader
+__Q:__ Assuming people would be expected value traders, and thus only invest if their belief about the asset going up was >= .5,
+how would this affect the Disposition Effect?
+
+If all of the DE would stem from beliefs, then the DE measure should not differ between a simulated EV trader using the reported beliefs and the actual behavior. If, however, there is a large preference component as well, or if beliefs were even rational, then the DE measure would decrease dramatically.
+
+I use a wilcox test since the histograms (see `plotting.R`) seem to indicate a bimodal distribution.
+
+```{r temp4}
+if(FALSE){ # To avoid sourcing. Set to true if needed.
+    complete_table %>%
+        filter(main_condition != 'baseline') %>% 
+        dplyr::select(DE_0, DE_EV_0) %>% 
+        summary()
+    
+    with(filter(complete_table, main_condition != 'baseline'),
+        wilcox.test(DE_0, DE_EV_0, paired = TRUE))
+}
+```
+__A:__ The EV trader shows a significantly lower DE, which is however still markedly above the rational benchmark.
+
+__Q:__ The same question but for a EU trader:
+```{r temp5}
+if(FALSE){ # To avoid sourcing. Set to true if needed.
+    complete_table %>%
+        filter(main_condition != 'baseline') %>% 
+        dplyr::select(DE_0, DE_EU_0) %>% 
+        summary()
+    
+    with(filter(complete_table, main_condition != 'baseline'),
+        wilcox.test(DE_0, DE_EU_0, paired = TRUE))
+}
+```
+
+# Trades as outcome
+## Descriptives
+```{r holding streaks}
+
+```
+
+
+## Predictiveness of Beliefs
+### Ordered Logit:
+```{r temp6}
+# Order the levels of hold_lead
+dat_main_long <- mutate(dat_main_long,
+       hold_lead = factor(lead(dat_main_long$hold), levels = c("-1", "0", "1"), ordered = TRUE))
+
+m_list$hold_by_belief_olog <- polr(hold_lead ~ belief,
+                                   data = filter(dat_main_long, i_block < 2),
+                                   Hess = TRUE)
+summary(m_list$hold_by_belief_olog)
+
+#### Excluding inattentives ---------------
+m_list$hold_by_belief_olog_excl <- polr(hold_lead ~ belief,
+                                        data = filter(dat_main_long, i_block < 2 & !excluded),
+                                        Hess = TRUE)
+
+m_list$hold_by_belief_olog_plot <- Effect(
+    focal.predictors = c("belief"), m_list$hold_by_belief_olog)
+```
+The function does not show a p-value, but I'm pretty sure that a t-value of 91.32 (as of before the last session) is pretty significant.
+
+### Old version: Standard logit
+*Note:* There are more periods in which people where invested than those in which they are not (`r table(dat_main_long$hold)[2]` holding periods and `r table(dat_main_long$hold)[1]` non-holding periods).
+This is not optimal for a logistic regression.
+
+__Q:__ Do people adhere to their beliefs? I.e. are the beliefs predictive for the investments? This is checked only in the first block of the non-baseline-baseline groups, since only those reported beliefs without intervention.
+The present test uses clustered standard errors on the level of participant.
+```{r temp7}
+# m1 <- glm(data = filter(dat_main_long, main_condition != 'baseline' & condition == 'baseline'),
+#           formula = hold_lead ~ belief,
+#           family = binomial(link = 'logit'))
+# 
+# coeftest(m1, vcovCL(m1, cluster = filter(dat_main_long, main_condition != 'baseline' & condition == 'baseline')$participant_code))
+```
+__A:__ Yes they are!
+
+Robustness checks by throwing a bunch of other variables in there:
+```{r temp8}
+# m2 <- glm(data = filter(dat_main_long, main_condition != 'baseline' & condition == 'baseline'),
+#           formula =hold_lead ~ round_number * hold * time_to_order * returns * belief,
+#           family = binomial(link = 'logit'))
+# coeftest(m2, vcovCL(m2, cluster = filter(dat_main_long, main_condition != 'baseline' & condition == 'baseline')$participant_code))
+```
+Includnig the round number, whether the asset was held in the last round (inertia, which would also be predicted by a bayesian EV benchmark in this framework), the response time and the level of returns the participant was at, the lottery price still remains predictive for the investment.
+
+Are the states more influential in the "states shown" condition than in the "probs_shown"? (they better be)
+```{r temp9}
+# 
+# m2 <- glm(data = filter(dat_main_long, condition %in% c('probs_shown', 'states_shown')),
+#           formula = hold_lead ~ state * condition,
+#           family = binomial(link = 'logit'))
+# summary(m2)
+```
+
+
+# Beliefs as outcome
+## Rationality
+
+__Q:__ Do the lottery bets correlate stronger with Bayesian belief updating if the probability is shown?
+```{r temp10}
+if(FALSE){ # To avoid sourcing. Set to TRUE if needed
+    this_dat <- complete_table %>%
+        filter(main_condition == 'probs_shown') %>% 
+        add_column(cor_diff = fisherZ(cor_lottery_bayes_1) - fisherZ(cor_lottery_bayes_0))
+    t.test(filter(this_dat, cor_diff < 1)$cor_diff)
+}
+```
+__A:__ They do. There is a significant increase in the correlation coefficient.
+
+__Q:__ How is the absolute difference between bayesian beliefs and reported beliefs ("belief errors") dependent on the last price move and the last position?
+```{r temp11}
+# m1 <- lmer(data = filter(dat_main_long, position_laged %in% c('Gain', 'Loss') & condition == 'baseline' &
+#                              main_condition != 'baseline'),
+#                formula = abs(bayes_prob_up - belief/100) ~ price_move_from_last_corrected * position_laged +
+#                    (1 + price_move_from_last_corrected * position_laged |participant_code))
+# summary(m1)
+```
+__A:__ `ranova()` shows that there is significant between subject variance (random effects) for the interaction.
+When including these random effects, a significant interaction and a significant effect of the last position remains!
+The belief-error does however not differ between price movement directions.
+
+Qualitatively it seems that people generally make greater mistakes when coming from a loss unless it is an upward price-move (under updating of downs in losses?).
+
+__Q:__ What are the effects in term of none-absolute difference between a bayesian agent and the reported beliefs? Is there evidence for overconfidence?
+```{r temp12}
+# m2 <- lmer(data = filter(dat_main_long, position_laged %in% c('Gain', 'Loss') & condition == 'baseline' &
+#                              main_condition != 'baseline'),
+#                formula = (bayes_prob_up - belief/10) ~ price_move_from_last_corrected * position_laged +
+#                    (1 + price_move_from_last_corrected * position_laged |participant_code))
+# summary(m2)
+```
+__A:__ Given that the intercept is significantly positive, there seems to be some general over-optimism.
+The difference between the Bayesian probability and the reported beliefs seems to be more negative (or smaller) after a price increase. This is difficult to interpret but could indicate under-updating after a price increase, which would however make over-optimism harder to explain...
+
+## Belief Updating
+__Q:__ Do the conditions have a significant effect on the difference in updating between favorable and unfavorable moves?
+```{r belief_updating_diff_in_diff}
+dat_prepared <- filter(dat_main_long, position_laged %in% c('Gain', 'Loss')) %>% 
+    mutate(is_baseline = main_condition == 'baseline')
+
+m_list$belief_upd_treatments <- lm(belief_diff_bayes_corrected_flipped ~ is_baseline + position_laged + price_move_from_last_corrected +
+is_baseline:position_laged:price_move_from_last_corrected,
+   data = dat_prepared)
+
+
+m_list$belief_upd_treatments_clust <- coeftest(m_list$belief_upd_treatments,
+         vcovCL(m_list$belief_upd_treatments,
+                cluster = ~dat_prepared$participant_code))
+
+m_list$belief_upd_treatments_clust
+```
+
+
+__Q:__ Is there an interaction in the updating between the direction of the price movement
+and the return position?
+```{r belief_updating_12}
+#### Only "correct" updates
+dat_prepared <- filter(dat_main_long, position_laged %in% c('Gain', 'Loss') & i_block < 2,
+                       updating_type != 'Wrong') %>% 
+    mutate(position_laged = droplevels(position_laged))
+
+# Make effect coded contrasts
+contrasts(dat_prepared$price_move_from_last_corrected) <- contr.sum(2)
+contrasts(dat_prepared$position_laged) <- contr.sum(2)
+
+### Clusered SE and Effecs coding
+m_list$update_12_ols <- lm(data = dat_prepared,
+               formula = belief_diff_bayes_corrected_flipped  ~
+                   price_move_from_last_corrected * position_laged) # + round_number + participant_code)
+
+# TODO: Check out "sandwich defaults" and whether they apply here
+m_list$update_12_clust <- coeftest(m_list$update_12_ols,
+         vcovCL(m_list$update_12_ols,
+                cluster = ~dat_prepared$participant_code + dat_prepared$round_number))
+m_list$update_12_clust
+```
+__A:__ Yes!
+
+__Q:__ Does the non-absolute updating differ by position and price move?
+```{r belief_updating}
+# TODO: Check where the singular fit happens
+# m_list$update_mimo <- lmer(
+#     data = filter(dat_main_long, position_laged %in% c('Gain', 'Loss') & i_block < 1,
+#                   main_condition == 'probs_shown'),
+#     formula = belief_diff_from_last ~ price_move_from_last_corrected * position_laged +
+#         (1 + price_move_from_last_corrected * position_laged |participant_code))
+#            # + (1 + price_move_from_last_corrected * position_laged |round_number))
+# summary(m_list$update_mimo)
+
+### Clusered SE instead of mixed effects
+dat_prepared <- filter(dat_main_long, position_laged %in% c('Gain', 'Loss') & i_block < 1,
+                  main_condition == 'probs_shown')
+
+m_list$update_ols <- lm(data = dat_prepared,
+               formula = belief_diff_from_last ~ price_move_from_last_corrected * position_laged) # + round_number + participant_code)
+
+# TODO: Check out "sandwich defaults" and whether they apply here
+# TODO: Understand clustering standard errors
+m_list$update_clust <- coeftest(m_list$update_ols,
+         vcovCL(m_list$update_ols, cluster = ~dat_prepared$participant_code + dat_prepared$round_number))
+
+m_list$update_pos_move_clust_test
+```
+__A:__
+
+__Q:__ Does the ratio between bayesian updating and actual updating change between position and movement?
+```{r update_bayes_ratio_test}
+# dat_main_long %>% 
+#     filter(position_laged %in% c('Gain', 'Loss') & !is.na(price_move_from_last_corrected)) %>% 
+#     group_by(price_move_from_last_corrected, position_laged) %>% 
+#     summarise(lower_24 = quantile(belief_diff_rel_to_bayes, .38, na.rm = TRUE),
+#               upper_24 = quantile(belief_diff_rel_to_bayes, .76, na.rm = TRUE),
+#               trunc_mean = mean(belief_diff_rel_to_bayes, trim = .38, na.rm = TRUE))
+```
+__A:__ Because the variable is a division between two random (and assumed normal) distributions, it follows a ratio-distribution. Daniel Block showed in his 2012 Journal of the American Statistical Association article, that the best estimator for the mean of a Cauchy-distribution (which would assume 0-means for the random variables) is its middle 24% quantile.
+
+It looks like this table confirms that even relative to a bayesian standard, negative news lead to over-updating of beliefs. While positive news are updated less strongly, there is also a difference in the position. The ratio for updating positive news in gains is about a third of that in losses. This would be in line with the learning explanation.
+
+__Q:__ Does the magnitude of price change influence the updating?
+```{r temp13}
+# m2 <- lm(data = filter(dat_main_long, position_laged == 'Not Invested' & condition == 'baseline' &
+#                         main_condition != 'baseline'),
+#           formula = abs(belief_diff_from_last) ~ abs(price_diff_from_last))
+# 
+# summary(m2)
+```
+__A:__ Apparently not. Good.
+
+__Q:__ What does the updating look like while not being invested?
+```{r temp14}
+# m3 <- lmer(data = filter(dat_main_long, position_laged == 'Not Invested' & condition == 'baseline' &
+#                         main_condition != 'baseline'),
+#            formula = abs(belief_diff_from_last) ~ price_move_from_last_corrected +
+#                (1|participant_code))
+# summary(m3)
+```
+__A:__ `ranova()` reveals the random effect of the last price move to not be significant. Thus it is ommited in the used model here. There seems to be an effect by which Upward-movements lead to slightly stronger updating than downwards movements.
+
+<!-- Older Stuff -->
+```{r older_stuff, include=FALSE, echo=FALSE}
+if(FALSE){ # To avoid sourcing.
+    this_dat <- dat_main_long %>% filter(main_condition == 'probs_shown')
+    this_dat$participant_code <- as.factor(this_dat$participant_code)
+    m1 <- lmer(data = dat_main_long, formula = belief ~ bayes_prob_up + (1 | participant_code),
+              na.action = na.omit)
+    
+    
+    this_dat$square_error <- (this_dat$bayes_prob_up - this_dat$belief) ** 2
+    
+    t_test_list <- list()
+    participant_codes <- unique(this_dat$participant_code)
+    
+    for (i in 1:length(participant_codes)){
+        x <- this_dat %>% filter(participant_code == participant_codes[[i]]) %>%
+            dplyr::select(square_error, i_block)
+        x$i_block <- as.factor(x$i_block)
+        t_test_list[[i]] <- t.test(data = x, square_error ~ i_block, na.action = na.omit, paired = TRUE,
+                                   alternative = 'greater')
+    }
+}
+```
+
+
+# Other
+## Effect of DE on Payoff
+__Q:__ *Sanity Check:* Does an increased DE measure lead to a decrease in payoff in our paradigm.
+```{r temp15}
+if(FALSE){ # To avoid sourcing
+    m2 <- lm(data = complete_table,
+         formula = payoff_trading_0 ~ DE_0)
+    
+    summary(m2)
+}
+```
+__A:__ Yes it significantly does so.
+
+<!-- # Playground -->
+```{r playground, echo=FALSE, include=FALSE}
+
+```
+
+```{r save_model_list}
+saveRDS(m_list, 'model_list.Rdat')
+```

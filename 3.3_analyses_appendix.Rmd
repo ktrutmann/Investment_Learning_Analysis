@@ -1,0 +1,388 @@
+---
+title: 'Reported Statistics Appendix'
+output: 
+    html_document:
+        toc: true
+        toc_float: yes
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+library(lme4)
+library(lmerTest)
+library(lmtest)
+library(sandwich)  # For clustered SEs
+library(stargazer)
+library(effects)
+library(tidyverse)
+
+theme_set(theme_minimal())
+
+# Loading data
+all_complete_tables <- str_subset(dir('Output/Tables/'), 'complete')
+most_recent <- max(str_extract(all_complete_tables, '\\d{4}-\\d{2}-\\d{2}'))
+
+complete_table <- read_delim(str_c('Output//Tables//',
+                                 str_subset(all_complete_tables, most_recent))[1], delim = ';')
+
+dat_main_long <- read_delim('..//Data//Clean//all_participants_long_main_main_study.csv',   
+                            delim = ';')
+
+# Color secifications for the plots
+col_set <- c('lightgrey', 'grey', 'darkgrey', 'black')
+```
+
+<!-- #################################################################### -->
+# Referenced in Phase 1
+
+## Inverse Updates
+```{r inverse_updates_gender}
+dat_prepared <- dat_main_long %>%
+  filter(i_block < 2) %>%
+  group_by(participant_code, gender) %>%
+  summarize(n_wrongs = sum(updating_type == 'Wrong'))
+
+wilcox.test(n_wrongs ~ gender, data = dat_prepared)
+```
+No more inverse updates for either gender.
+
+Correlations:
+Replace the variable in `cor.test()` with any of the ones in the `group_by()` statement to test their correlations.
+```{r inverse_updates_corrs}
+dat_prepared <- dat_main_long %>%
+  filter( #age < 40,
+    i_block < 2) %>%
+  group_by(participant_code, investment_experience,
+    age, engagement, cogn_rpm_total_points, risk_soep_general) %>%
+  summarize(n_wrongs = sum(updating_type == 'Wrong'))
+
+cor.test(dat_prepared$n_wrongs, dat_prepared$risk_soep_general,
+  method = 'spearman')
+
+```
+```{r inverse_updates_de}
+dat_prepared <- dat_main_long %>%
+  filter(i_block < 2) %>%
+  group_by(participant_code) %>%
+  summarize(n_wrongs = sum(updating_type == 'Wrong')) %>%
+  left_join(complete_table, by = 'participant_code')
+
+cor.test(dat_prepared$n_wrongs, dat_prepared$de_12)
+```
+
+<!-- -------------------------------------------------------------------- -->
+## The Role of Beliefs
+
+Did higher engagement lead to a "more reasonable" scale in belief reports?
+```{r belief_var_by_engagement}
+dat_prepared <- dat_main_long %>%
+  dplyr::filter(i_block < 2) %>%
+  group_by(participant_code, engagement) %>%
+  summarize(belief_sd = sd(belief, na.rm = TRUE))
+
+cor.test(dat_prepared$engagement, dat_prepared$belief_sd,
+  method = 'spearman')
+```
+
+Variance of the belief reports between subjects.
+```{r belief_variance_hist, message = FALSE}
+these_sds <- dat_main_long  %>%
+  filter(i_block < 2) %>%
+  group_by(participant_code) %>%
+  summarise(sd_per_participant = sd(belief / 100, na.rm = TRUE))
+
+ggplot(these_sds, aes(x = sd_per_participant)) +
+  geom_histogram(alpha = .6, fill = 'black') +
+  geom_vline(xintercept = .03135, linetype = 'dashed') +
+  labs(x = 'Belief Report Standard Deviations', y = 'Frequency')
+
+# ggsave('belief_variance_hist.pdf',  device = 'pdf',
+#   width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+
+
+<!-- -------------------------------------------------------------------- -->
+### Belief Formation
+Frequency of update types compared to Bayesian updating.
+```{r update_type_table}
+knitr::kable(prop.table(table(dat_main_long$updating_type)),
+  col.names = c('Updating Type', 'Proportion'))
+```
+
+How strong is the updating after `n` up or down signals?
+```{r updating_magnitude_by_run_length}
+dat_prepared <- dat_main_long %>%
+  dplyr::filter(i_block < 2) %>%
+  mutate(run_position = unlist(sapply(rle(price_move_from_last)$lengths,
+    seq_len))) %>%
+  group_by(price_move_from_last, run_position) %>%
+  summarize(
+    avg_update = mean(belief_diff_from_last / 100, na.rm = TRUE),
+    SE = sd(belief_diff_from_last / 100, na.rm = TRUE) / sqrt(n()),
+    lower_CI = avg_update + qt(.05, n()) * SE,
+    upper_CI = avg_update + qt(.95, n()) * SE) %>%
+  filter(run_position < 7,
+    !is.na(price_move_from_last))
+
+ggplot(dat_prepared,
+  aes(x = run_position, y = avg_update,
+    group = price_move_from_last, color = price_move_from_last)) +
+  geom_line(size = 1) +
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = .05) +
+  scale_color_manual(values = c(col_set[1], col_set[3])) +
+  labs(x = 'N Same Moves', y = 'Mean Update', color = 'Price Move',
+    group = 'Price Move')
+
+# ggsave('updating_magnitude_by_run_length.pdf', device = 'pdf',
+#   width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+The same but with the beliefs
+```{r beliefs_by_run_length}
+dat_prepared <- dat_main_long %>%
+  dplyr::filter(i_block < 2) %>%
+  mutate(run_position = unlist(sapply(rle(price_move_from_last)$lengths,
+    seq_len))) %>%
+  group_by(price_move_from_last, run_position) %>%
+  summarize(
+    avg_belief = mean(belief / 100, na.rm = TRUE),
+    SE = sd(belief / 100, na.rm = TRUE) / sqrt(n()),
+    lower_CI = avg_belief + qt(.05, n()) * SE,
+    upper_CI = avg_belief + qt(.95, n()) * SE) %>%
+  dplyr::filter(run_position < 7,
+    !is.na(price_move_from_last))
+
+ggplot(dat_prepared,
+  aes(x = run_position, y = avg_belief,
+    group = price_move_from_last, color = price_move_from_last)) +
+  geom_line(size = 1) +
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = .05) +
+  scale_color_manual(values = c(col_set[1], col_set[3])) +
+  labs(x = 'N Same Moves', y = 'Mean Update', color = 'Price Move',
+    group = 'Price Move')
+
+# ggsave('beliefs_by_run_length.pdf', device = 'pdf',
+#   width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+Testing whether the interaction pattern also holds when only looking at long or short investments seperately.
+Change the filter `lag(hold) == 1` between `1` and `-1` to either only include long or short investments.
+```{r updating_baseline_test_long_short}
+dat_prepared <- dat_main_long %>%
+  filter(i_block < 2,
+         position_end_of_last_period %in% c('Gain', 'Loss'),
+         dplyr::lag(hold) == 1,
+    ) %>%
+  transmute(price_move_from_last_corrected = dplyr::recode(
+      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+    position_end_of_last_period = dplyr::recode(
+      position_end_of_last_period, 'Loss' = -.5, 'Gain' = .5),
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100,
+    participant_code = participant_code)
+
+belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
+  position_end_of_last_period * price_move_from_last_corrected,
+   data = dat_prepared)
+
+coeftest(belief_updates_baseline,
+         vcovCL(belief_updates_baseline,
+           cluster = ~dat_prepared$participant_code))
+```
+
+Checking whether there is an interaction in the updating during the first two blocks when correcting for a RL learner. These effects are __effect coded!__ and clustered by participant. Comment out the `updating_type != 'Wrong'` filter to get the results with wrong updates included.
+```{r updating_baseline_test_rl}
+dat_prepared <- dat_main_long %>%
+  dplyr::filter(i_block < 2,
+         position_end_of_last_period %in% c('Gain', 'Loss'),
+         # updating_type != 'Wrong'
+    ) %>%
+  mutate(price_move_from_last_corrected = recode(
+      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+    position_end_of_last_period = recode(position_end_of_last_period,
+      'Loss' = -.5, 'Gain' = .5),
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped /
+      100)
+
+belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
+  position_end_of_last_period * price_move_from_last_corrected,
+   data = dat_prepared)
+
+coeftest(belief_updates_baseline,
+         vcovCL(belief_updates_baseline,
+           cluster = ~dat_prepared$participant_code)) 
+```
+_(robust to excluding inattentives)_
+
+Boxplots about the variances of PGR and PLR.
+To get the plot using the raw values (not relative to the rational benchmark) comment out the recoding line for `Value` in the `mutate()` call.
+```{r pgr_plr_phase_one}
+complete_table %>%
+  dplyr::select(participant_code, plr_12, pgr_12) %>%
+  pivot_longer(-participant_code, names_to = 'Position',
+  values_to = 'Value') %>%
+  mutate(Position = dplyr::recode(
+    Position, 'pgr_12' = 'PGR', 'plr_12' = 'PLR'),
+    Value = if_else(Position == 'PGR', Value - .19, Value - .97)
+    ) %>%
+
+ggplot(aes(x = Position, y = Value)) +
+  geom_line(aes(group = participant_code), alpha = .25,
+    position = position_jitter(.05)) +
+  geom_boxplot(alpha = .5, outlier.shape = NA)
+
+# ggsave('pgr_plr_phase_one_boxplots_benchmark.pdf', device = 'pdf',
+#   width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+
+<!-- #################################################################### -->
+# Referenced in Phase 2
+
+## Trading Behavior
+
+DE of the first phase corrected for the benchmark. There is no significant difference between groups in the first phase as all participants received the same treatment.
+```{r de_conditions_baseline}
+summary(lm(de_12 + .78 ~ main_condition, data = complete_table))
+```
+
+The uncorrected differences in DE values between first and second phase compared between conditions.
+```{r de_conditions_treatments_raw}
+summary(lm(de_diff_12_34 ~ main_condition, data = complete_table))  
+```
+
+Finding out whether participants adhered to the shown probabilities in the states_shown condition.
+```{r beliefs_states_shown}
+dat_main_long %>%
+  dplyr::filter(condition == 'states_shown') %>%
+  mutate(state = factor(state, levels = 0:1, labels = c('Bad', 'Good'))) %>%
+  group_by(participant_code, state) %>%
+  summarize(mean_belief = mean(belief) / 100,
+            sd_belief = sd(belief / 100)) %>%
+  mutate(diff_to_rational = if_else(state == 'Good', .65 - mean_belief,
+            .35 - mean_belief)) %>%
+  group_by(participant_code) %>%
+  mutate(rationality_score = sum(abs(diff_to_rational))) %>%
+  arrange(rationality_score) %>%
+  ungroup() %>%
+  mutate(participant_num = factor(
+    participant_code, levels = unique(participant_code))) %>%
+
+  ggplot(aes(x = participant_num, y = mean_belief, color = state)) +
+  geom_point(position = position_dodge(.25)) +
+  geom_errorbar(aes(ymin = mean_belief - sd_belief,
+    ymax = mean_belief + sd_belief, width = 0),
+    position = position_dodge(.25)) +
+  scale_color_manual(values = c('black', 'darkgrey')) +
+  labs(x = 'Participant', y = 'Average Belief', color = 'State') +
+  theme(axis.text.x = element_blank())
+
+# ggsave('avg_beliefs_states_shown_bw.pdf',  device = 'pdf',
+#   width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+
+<!-- #################################################################### -->
+## Belief Updating
+
+```{r updating_states_shown_hist}
+ggplot(dplyr::filter(dat_main_long,
+  position_end_of_last_period %in% c('Gain', 'Loss'),
+         condition == 'states_shown', i_block > 1),
+  aes(x = belief_diff_from_last / 100)) +
+  facet_grid(rows = vars(position_end_of_last_period,
+    price_move_from_last_corrected)) +
+  geom_histogram(fill = col_set[3]) +
+  labs(x = 'Belief Updates in full information Condition', y = 'Frequency')
+
+ggsave('updating_full_info_hist.pdf',  device = 'pdf',
+  width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+```{r updating_states_shown_bars}
+dat_prepared <- dat_main_long %>%
+  dplyr::filter(position_end_of_last_period != 'No Returns',
+         condition == 'states_shown',
+         i_block > 1) %>%
+  mutate(belief_diff_from_last =
+    belief_diff_from_last / 100)
+
+dat_prepared_1 <- dat_prepared %>%
+dplyr::filter(position_end_of_last_period != 'Not Invested') %>%
+group_by(position_end_of_last_period, price_move_from_last_corrected) %>%
+summarize(mean_update = mean(belief_diff_from_last),
+          SE = sd(belief_diff_from_last) / sqrt(n()),
+          CI_90_lower = mean_update - SE * qt(.95, n()),
+          CI_90_upper = mean_update + SE * qt(.95, n()))
+
+dat_prepared_2 <- dat_prepared %>%
+  dplyr::filter(position_end_of_last_period == 'Not Invested') %>%
+  summarize(mean_update = mean(
+              belief_diff_from_last, na.rm = TRUE),
+            SE = sd(belief_diff_from_last, na.rm = TRUE) /
+              sqrt(length(belief_diff_from_last)),
+            CI_90_lower = mean_update - SE * qt(.95, n()),
+            CI_90_upper = mean_update + SE * qt(.95, n())) %>%
+  add_column(tibble(position_end_of_last_period = 'Not Invested',
+    price_move_from_last_corrected = ''))
+
+dat_prepared <- full_join(dat_prepared_1, dat_prepared_2)
+
+ggplot(dat_prepared,
+       aes(x = position_end_of_last_period, y = mean_update)) +
+  facet_grid(cols = vars(price_move_from_last_corrected),
+    scale = 'free_x', space = 'free_x') +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
+                position = position_dodge(.9),
+                width = .1) +
+  labs(x = 'Price Movement and Position',
+    y = 'Mean Corrected Belief Update', fill = 'Treatment')
+
+# ggsave('updating_full_info_bars.pdf',  device = 'pdf',
+#   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
+
+
+```
+
+```{r update_states_shown}
+dat_prepared <- dat_main_long %>%
+  dplyr::filter(position_end_of_last_period != 'No Returns',
+         condition == 'states_shown',
+         i_block > 1) %>%
+  mutate(belief_diff_bayes_corrected =
+    belief_diff_bayes_corrected / 100)
+
+dat_prepared_1 <- dat_prepared %>%
+filter(position_end_of_last_period != 'Not Invested') %>%
+group_by(position_end_of_last_period, price_move_from_last_corrected) %>%
+summarize(mean_update = mean(belief_diff_bayes_corrected),
+          SE = sd(belief_diff_bayes_corrected) / sqrt(n()),
+          CI_90_lower = mean_update - SE * qt(.95, n()),
+          CI_90_upper = mean_update + SE * qt(.95, n()))
+
+dat_prepared_2 <- dat_prepared %>%
+  filter(position_end_of_last_period == 'Not Invested') %>%
+  summarize(mean_update = mean(
+              belief_diff_bayes_corrected, na.rm = TRUE),
+            SE = sd(belief_diff_bayes_corrected, na.rm = TRUE) / sqrt(n()),
+            CI_90_lower = mean_update - SE * qt(.95, n()),
+            CI_90_upper = mean_update + SE * qt(.95, n())) %>%
+  add_column(tibble(position_end_of_last_period = 'Not Invested',
+    price_move_from_last_corrected = ''))
+
+dat_prepared <- full_join(dat_prepared_1, dat_prepared_2)
+
+ggplot(dat_prepared,
+       aes(x = position_end_of_last_period, y = mean_update)) +
+  facet_grid(cols = vars(price_move_from_last_corrected),
+    scale = 'free_x', space = 'free_x') +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
+                position = position_dodge(.9), width = .1) +
+  labs(x = 'Price Movement and Position',
+    y = 'Mean Corrected Belief Update', fill = 'Treatment')
+
+# ggsave('updating_full_info_bars.pdf',  device = 'pdf',
+  # width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
+```
