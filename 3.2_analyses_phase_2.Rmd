@@ -209,6 +209,33 @@ dat_main_long %>%
     avg_distance_to_bayes = mean(bayes_prob_up - belief / 100))
 ```
 
+
+```{r hit_rate_by_condition_2}
+complete_table %>%
+  group_by(main_condition) %>%
+  summarize(avt_hit_rate_improvement =
+    mean((hit_rate_3 + hit_rate_4) / 2 -
+      (hit_rate_1 + hit_rate_2) / 2),
+    avg_hit_rate_to_rational_1 =
+    mean((hit_rate_1 - rational_hit_rate_1) +
+      (hit_rate_2 - rational_hit_rate_2)) / 2,
+    avg_hit_rate_to_rational =
+    mean((hit_rate_3 - rational_hit_rate_3) +
+      (hit_rate_4 - rational_hit_rate_4)) / 2,
+    avg_hit_rate_to_rational_diff_12_34 =
+    mean((((hit_rate_1 - rational_hit_rate_1) +
+      (hit_rate_2 - rational_hit_rate_2)) / 2) -
+      ((hit_rate_3 - rational_hit_rate_3) +
+      (hit_rate_4 - rational_hit_rate_4)) / 2))
+
+lm((((hit_rate_1 - rational_hit_rate_1) +
+      (hit_rate_2 - rational_hit_rate_2)) / 2) -
+      ((hit_rate_3 - rational_hit_rate_3) +
+      (hit_rate_4 - rational_hit_rate_4)) / 2 ~ main_condition,
+  data = complete_table) %>%
+summary()
+```
+
 <!-- -------------------------------------------------------------------- -->
 ## Influence on DE
 
@@ -216,8 +243,7 @@ Checking the within subject effect of the treatments in phase two (first separat
 The rational benchmark value from the first phase is subtracted from the _states shown_ DE numbers as the benchmark in this treatment changes to 0.
 ```{r de_conditions_treatment}
 dat_prepared <- complete_table %>%
-  mutate(de_diff_12_34 = if_else(main_condition == 'states_shown',
-    de_diff_12_34 - .78, de_diff_12_34))
+  mutate(de_diff_12_34 = (de_34 - rational_de_34) - (de_12 - rational_de_12))
 
 t.test(filter(dat_prepared, main_condition == 'baseline')$de_diff_12_34,
   alternative = 'less')

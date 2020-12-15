@@ -1,3 +1,11 @@
+get_95_ci <- function(x) {
+  ci_len <- (sd(x) / sqrt(length(x))) * qt(.95, length(x))
+  return(data.frame(
+                y = mean(x),
+                ymin = mean(x) - ci_len,
+                ymax = mean(x) + ci_len))
+}
+
 # Violins ------------------------------------------------------------------
 
 # Belief updating
@@ -93,15 +101,15 @@ ggplotly()
 {
 confidence_intervalls <- complete_table %>%
   group_by(main_condition) %>%
-  summarise(SE = sd(DE_12)/sqrt(length(DE_12)),
-            CI_90 = SE * qt(.95, length(DE_12) - 1),
-            lower = mean(DE_12)-CI_90,
-            upper = mean(DE_12)+CI_90,
-            DE_12 = mean(DE_12))
+  summarise(SE = sd(de_12) / sqrt(length(de_12)),
+            CI_90 = SE * qt(.95, length(de_12) - 1),
+            lower = mean(de_12) - CI_90,
+            upper = mean(de_12) + CI_90,
+            de_12 = mean(de_12))
 
 # plot_list$DE_violin_baseline_blocks <-
   ggplot(data = complete_table,
-            aes(x = main_condition, y = DE_12)) +
+            aes(x = main_condition, y = de_12)) +
   geom_hline(aes(yintercept = 0), alpha = .5) +
   geom_hline(aes(yintercept = -.78), alpha = .5, color = 'darkred') +
   geom_point(position = position_jitter(width = .1), alpha = .5) +
@@ -118,94 +126,68 @@ confidence_intervalls <- complete_table %>%
   theme(text = element_text(size = text_size))
 
 ggplotly(plot_list$DE_violin_baseline_blocks)}
-# Main study DE in Block 1 & 2 relative  to benchmark:
-{
-  confidence_intervalls <- complete_table %>%
-    group_by(main_condition) %>%
-    summarise(SE = sd(DE_12)/sqrt(length(DE_12)),
-              CI_90 = SE * qt(.95, length(DE_12) - 1),
-              lower = mean(DE_12)-CI_90,
-              upper = mean(DE_12)+CI_90,
-              DE_12 = mean(DE_12))
 
-  # plot_list$DE_violin_baseline_blocks <-
-  ggplot(data = complete_table,
-         aes(x = main_condition, y = DE_12 + .78)) +
-    geom_hline(aes(yintercept = 0), alpha = .5) +
-    geom_point(position = position_jitter(width = .1), alpha = .5) +
-    geom_violin(alpha = .6, fill = 'skyblue4') +
-    stat_summary(fun = mean, fun.min = mean, fun.max = mean,
-                 geom = "crossbar", width = 0.1, color = 'red') +
-    geom_errorbar(aes(x = main_condition, ymin = lower + .78, ymax = upper + .78),
-                  data = confidence_intervalls,
-                  color = 'red', width = .05) +
-    ggtitle('DE relative to Benchmark', subtitle = 'Blocks 1 & 2 (Baseline Blocks)') +
-    labs(x = 'Condition', y = 'DE from Benchmark') +
-    scale_x_discrete(labels = c('Baseline', 'Probabilities shown', 'States shown')) +
-    theme_minimal() +
-    theme(text = element_text(size = text_size))
 
-  ggplotly()}
-
-# Main study DE in Block 3 & 4:
-{  confidence_intervalls <- complete_table %>%
-  group_by(main_condition) %>%
-  summarise(SE = sd(DE_34)/sqrt(length(DE_34)),
-            CI_90 = SE * qt(.95, length(DE_34)),
-            lower = mean(DE_34)-CI_90,
-            upper = mean(DE_34)+CI_90,
-            DE_34 = mean(DE_34))
-
-# p <-
-  ggplot(data = complete_table,
-            aes(x = main_condition, y = DE_34)) +
-  geom_hline(aes(yintercept = 0), alpha = .5) +
-  geom_line(aes(x, y, group = 1),
-            data = tibble(x = c(0, 2.5, 2.5, 3), y = c(-.5, -.5, 0, 0)),
-            alpha = .75, color = 'darkred') +
-  geom_point(position = position_jitter(width = .1), alpha = .5) +
-  geom_violin(alpha = .6, fill = 'skyblue4') +
-  stat_summary(fun = mean, fun.min = mean, fun.max = mean,
-               geom = "crossbar", width = 0.1, color = 'red') +
-  geom_errorbar(aes(x = main_condition, ymin = lower, ymax = upper),
-                data = confidence_intervalls,
-              color = 'red', width = .05) +
-  ggtitle('DE in Blocks 3 & 4', subtitle = '(Treatment Blocks)') +
-  labs(x = 'Condition', y = 'Disposition Effect') +
-  scale_x_discrete(labels = c('Baseline', 'Probabilities shown', 'States shown')) +
-  theme_minimal() +
-  theme(text = element_text(size = text_size))
-
-  ggplotly()}
-# Main study DE in Block 3 & 4 relative to benchmark:
-{  confidence_intervalls <- complete_table %>%
-  group_by(main_condition) %>%
-  mutate(DE_34 = ifelse(main_condition == 'states_shown', DE_34, DE_34 + .78)) %>%
-  summarise(SE = sd(DE_34)/sqrt(length(DE_34)),
-            CI_90 = SE * qt(.95, length(DE_34)),
-            lower = mean(DE_34)-CI_90,
-            upper = mean(DE_34)+CI_90,
-            DE_34 = mean(DE_34))
-
-# p <-
-  ggplot(data = complete_table,
-            aes(x = main_condition,
-                y = ifelse(main_condition == 'states_shown', DE_34, DE_34 + .78))) +
+# Main study DE in Block 1 & 2 relative to benchmark:
+complete_table %>%
+  mutate(de_diff_rel_to_rational = de_12 - rational_de_12) %>%
+  ggplot(aes(x = main_condition, y = de_diff_rel_to_rational)) +
   geom_hline(aes(yintercept = 0), alpha = .5) +
   geom_point(position = position_jitter(width = .1), alpha = .5) +
   geom_violin(alpha = .6, fill = 'skyblue4') +
   stat_summary(fun = mean, fun.min = mean, fun.max = mean,
-               geom = "crossbar", width = 0.1, color = 'red') +
-  geom_errorbar(aes(x = main_condition, ymin = lower, ymax = upper),
-                data = confidence_intervalls,
-              color = 'red', width = .05) +
-  ggtitle('DE in Blocks 3 & 4', subtitle = '(Treatment Blocks)') +
+               geom = 'crossbar', width = 0.1, color = 'red') +
+  stat_summary(fun.data = get_95_ci,
+    geom = 'errorbar', color = 'red', width = .05) +
+  ggtitle('DE in Baseline Blocks',
+    subtitle = 'Relative to individual benchmark') +
   labs(x = 'Condition', y = 'Disposition Effect') +
-  scale_x_discrete(labels = c('Baseline', 'Probabilities shown', 'States shown')) +
-  theme_minimal() +
+  scale_x_discrete(labels = c('Baseline', 'Probabilities shown',
+    'States shown')) +
   theme(text = element_text(size = text_size))
 
-  ggplotly()}
+
+# Main study DE in Block 3 & 4 (Relative to individual benchmark):
+complete_table %>%
+  mutate(de_diff_rel_to_rational = de_34 - rational_de_34) %>%
+  ggplot(aes(x = main_condition, y = de_diff_rel_to_rational)) +
+  geom_hline(aes(yintercept = 0), alpha = .5) +
+  geom_point(position = position_jitter(width = .1), alpha = .5) +
+  geom_violin(alpha = .6, fill = 'skyblue4') +
+  stat_summary(fun = mean, fun.min = mean, fun.max = mean,
+               geom = 'crossbar', width = 0.1, color = 'red') +
+  stat_summary(fun.data = get_95_ci,
+    geom = 'errorbar', color = 'red', width = .05) +
+  ggtitle('DE in Treatment Blocks',
+    subtitle = 'Relative to individual benchmark') +
+  labs(x = 'Condition', y = 'Disposition Effect') +
+  scale_x_discrete(labels = c('Baseline', 'Probabilities shown',
+    'States shown')) +
+  theme(text = element_text(size = text_size))
+
+
+# Main study DE-difference between blocks 1&2 and Blocks 3&4
+# (Relative to individual benchmark):
+
+complete_table %>%
+  mutate(de_diff_rel_to_rational = (de_34 - rational_de_34) -
+    (de_12 - rational_de_12)) %>%
+  ggplot(aes(x = main_condition, y = de_diff_rel_to_rational)) +
+  geom_hline(aes(yintercept = 0), alpha = .5) +
+  geom_point(position = position_jitter(width = .1), alpha = .5) +
+  geom_violin(alpha = .6, fill = 'skyblue4') +
+  stat_summary(fun = mean, fun.min = mean, fun.max = mean,
+               geom = 'crossbar', width = 0.1, color = 'red') +
+  stat_summary(fun.data = get_95_ci,
+    geom = 'errorbar', color = 'red', width = .05) +
+  ggtitle('Decrease in DE between Blocks',
+    subtitle = 'Corrected for individual benchmarks') +
+  labs(x = 'Condition', y = 'Disposition Effect Difference') +
+  scale_x_discrete(labels = c('Baseline', 'Probabilities shown',
+    'States shown')) +
+  theme(text = element_text(size = text_size))
+
+
 
 
 # Main Study gender difference:

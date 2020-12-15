@@ -1,3 +1,5 @@
+library(tidyverse)
+
 # Loading Data: ################################################################
 
 study_stage <- 'main_study'  # With what part of the study are we dealing here?
@@ -46,6 +48,7 @@ count_n_moves <- function(moves, invested) {
 dat_main_long$rl_belief <- NA
 signal <- as.integer(c(NA, diff(dat_main_long$price) > 0))
 
+progress <- 5
 for (i in seq_len(nrow(dat_main_long))) {
   if (i == 1) {
     this_block_i <- dat_main_long$i_block[1]
@@ -56,14 +59,18 @@ for (i in seq_len(nrow(dat_main_long))) {
   if (is.na(dat_main_long$i_block[i - 1])) {
     dat_main_long$rl_belief[i] <- .5
     this_block_i <- dat_main_long$i_block[i]
-    cat(str_c('Block ', this_block_i,
-      '; Participant ', dat_main_long$participant_code[i], ';\n'))
     next
   }
 
   prev_belief <- dat_main_long$rl_belief[i - 1]
   dat_main_long$rl_belief[i] <- prev_belief + rl_alpha * (signal[i] - prev_belief)
   this_block_i <- dat_main_long$i_block[i]
+
+  if (i %% as.integer(nrow(dat_main_long) / 20) == 0) {
+    cat(str_c('\nModel beliefs: ',
+      progress, '%'))
+    progress <- progress + 5
+  }
 }
 
 
@@ -117,13 +124,16 @@ dat_main_long <- dat_main_long %>%
   )
 
 # "Optimal Trading" -----------------------------------------------------------
-dat_main_long$rational_hold <- if_else(
-  dplyr::lag(dat_main_long$bayes_prob_up) >= .5, 1, -1)
-dat_main_long$rational_hold <- if_else(lead(dat_main_long$condition) == 'states_shown',
-  if_else(dplyr::lag(dat_main_long$state) == 1, 1, -1), dat_main_long$rational_hold)
+dat_main_long$rational_hold <- case_when(
+  dplyr::lag(dat_main_long$bayes_prob_up) > .5 ~ 1,
+  dplyr::lag(dat_main_long$bayes_prob_up) < .5 ~ -1)
 
-dat_main_long$rational_trading_earnings <- replace_na(
-  dat_main_long$price_diff_from_last * dat_main_long$rational_hold, 0)
+dat_main_long$rational_hold <- if_else(
+  lag(dat_main_long$condition) == 'states_shown',
+  if_else(dplyr::lag(dat_main_long$state) == 1, 1, -1),
+  dat_main_long$rational_hold)
+
+dat_main_long$rational_trade <- c(diff(dat_main_long$rational_hold), NA)
 
 set.seed(seed = seed)
 lottery_probs <- runif(nrow(dat_main_long))
@@ -137,16 +147,36 @@ dat_main_long$rational_lottery_earnings <-
     dat_main_long$price_diff_to_next > 0)) %>%
   replace_na(0)
 
-dat_main_long$rational_complete_earnings <- dat_main_long$rational_trading_earnings +
-  dat_main_long$rational_lottery_earnings
+# Rational returns
+dat_main_long$rational_returns <- 0
+progress <- 5
+for (i in seq_len(nrow(dat_main_long))) {
+  if (is.na(dat_main_long$i_round_in_block[i]) |
+    dat_main_long$i_round_in_block[i] == 0 |
+    is.na(dat_main_long$rational_hold[i]) |
+    dat_main_long$rational_hold[i] == 0)
+    next
+
+  dat_main_long$rational_returns[i] <-
+    dat_main_long$price_diff_from_last[i] * dat_main_long$rational_hold[i]
+
+  if (!is.na(dat_main_long$rational_hold[i - 1]) &
+    dat_main_long$rational_hold[i - 1] == dat_main_long$rational_hold[i]) {
+
+    dat_main_long$rational_returns[i] <- dat_main_long$rational_returns[i] +
+      dat_main_long$rational_returns[i - 1]
+  }
+      
+  if (i %% as.integer(nrow(dat_main_long) / 20) == 0) {
+    cat(str_c('\nRational returns: ',
+      progress, '%'))
+    progress <- progress + 5
+  }
+}
 
 # Save Data ---------------------------------------------------------------
 
 # Re-save that dataframe with the additional variables
 # TODO: general comments are saved incorrectly! Fix that!
 write_delim(dat_main_long, file.path(clean_dat_path,
-  str_c('all_participants_long_main_', study_stage, '.csv')),
-delim = ';')
-
-# Loading the data in case it gets lost again:
-# dat_main_long <- read_delim('..//Data//Clean//all_participants_long_main_main_study.csv', delim = ';')
+  str_c('all_participants_long_main_', study_stage, '.csv')), delim = ';')

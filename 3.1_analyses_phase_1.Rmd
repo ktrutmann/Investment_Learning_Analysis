@@ -62,10 +62,16 @@ round(sum(complete_table$is_student == 'Ja') * 100, 2)
 
 Here we show the actual payoff of the participants as well as the average payoff a risk neutral Bayesian agent would have earned. The exchange rate from points to CHF was __.06__. Each "win" in the probability matching task was worth 1 point.
 ```{r earnings}
-complete_table %>%
-  mutate(rational_payoff_chf = max(0, rational_payoff * .06 + 15) + 10) %>%
-  summarise(avg_earnings = mean(participant_payoff * .06 + 10),
-            avg_rational_earnings = mean(rational_payoff_chf)) %>%
+earnings <- complete_table %>%
+  summarise(avg_earnings = mean(participant_payoff * .06 + 10))
+
+# FIXME: Pretty sure there's something incorrect here!
+dat_main_long  %>%
+  group_by(participant_code) %>%
+  summarize(rational_earnings = sum(price_diff_from_last * rational_hold +
+    rational_lottery_earnings, na.rm = TRUE)) %>%
+  summarize(rational_earnings = mean(rational_earnings) * .06 + 15 + 10)
+
   round(2) %>%
   knitr::kable(col.names = c('Average Participant Earnings',
     'Average Earnings Rational Benchmark'))
@@ -83,12 +89,25 @@ median(complete_table$engagement)
 <!-- #################################################################### -->
 # Trading Behavior first phase
 
+What did they do in the very first round where no information was available?
+```{r first_trade}
+dat_main_long %>%
+  dplyr::filter(i_round_in_block == 0,
+    i_block < 2) %>%
+  summarize(did_nothing = mean(transaction == 0),
+    invested = mean(transaction + hold == 1 & transaction != 0),
+    liquidated = mean(transaction + hold == 0 & transaction != 0),
+    shorted = mean(transaction + hold == -1 & transaction != 0))
+```
+
 Average holding/shorting frequency (what percentage of the periods did they hold or short the asset on average?):
 ```{r avg_hold_short}
 dat_main_long %>%
   filter(i_block <= 1) %>%
   summarize(average_hold = mean(hold == 1),
-    average_short = mean(hold == -1)) %>%
+    average_short = mean(hold == -1),
+    average_rational_hold = mean(rational_hold == 1, na.rm = TRUE),
+    average_rational_short = mean(rational_hold == -1, na.rm = TRUE)) %>%
   knitr::kable()
 ```
 
@@ -97,9 +116,12 @@ Average (and SD) number of transactions in the first phase:
 dat_main_long %>%
   filter(i_block <= 1) %>%
   group_by(participant_code) %>%
-  summarize(transaction_per_participant = sum(transaction != 0)) %>%
+  summarize(transaction_per_participant = sum(transaction != 0),
+    rational_transactions_pp = sum(rational_trade != 0, na.rm = TRUE)) %>%
   summarize(average_transactions = mean(transaction_per_participant),
-    average_transaction_sd = sd(transaction_per_participant)) %>%
+    average_transaction_sd = sd(transaction_per_participant),
+    average_rational_transactions = mean(rational_transactions_pp) + 1,
+    average_rational_transactions_sd = sd(rational_transactions_pp)) %>%
   knitr::kable()
 ```
 
@@ -244,13 +266,14 @@ __`r round(mean(complete_table$de_12), 3)`__.
 
 Checking whether the DE is larger than the rational benchmark.
 ```{r DE_test_phase_1}
-t.test(complete_table$de_12 + .78, alternative = 'greater')
+t.test(complete_table$de_12 - complete_table$rational_de_12,
+  alternative = 'greater')
 ```
 
 ```{r event_analysis}
-window <- -3:5 # How many periods before and after switch to look at
+window <- -2:6 # How many periods before and after switch to look at
 this_dat <- filter(dat_main_long, i_block < 2)
-switches <- which(diff(this_dat$state) != 0) + 1  # Locations of the first period with a new state!
+switches <- which(diff(this_dat$state) != 0) + 2 # Locations of the first period with a new state!
 switch_type <- diff(this_dat$state)[diff(this_dat$state) != 0]
 
 moves_around_switches <- tibble(
@@ -275,13 +298,30 @@ ggplot(aes(x = shift, y = avg_hold, color = original_switch_type,
   group = original_switch_type)) +
   geom_line(size = 1) +
   geom_vline(xintercept = 0, linetype = 'dashed') +
-  labs(x = 'Periods since Switch', y = 'Average Portfolio',
+  geom_text(x = 2, y = .255, label = 'Changing from bad to good state',
+    color = '#202020', size = 4) +
+  geom_text(x = 2, y = .08, label = 'Changing from good to bad state',
+    color = '#202020', size = 4) +
+  labs(x = 'Rounds, centered around change in asset state',
+    y = 'Average Investment',
     group = 'Switch Type', color = 'Switch Type') +
-  scale_color_manual(values = c(col_set[1], col_set[3]),
-    labels = c('Good to Bad', 'Bad to Good'))
+  scale_color_manual(values = c(col_set[1], col_set[3])) +
+  scale_x_continuous(breaks = window) +
+  theme(panel.grid.minor.x = element_blank(),
+    legend.position = 'none')
+
 
 ggsave('event_analysis_trades.pdf',  device = 'pdf',
   width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+
+```{r hit_rates}
+complete_table %>%
+  mutate(hit_rate = (hit_rate_1 + hit_rate_2) / 2,
+    rational_hit_rate = (rational_hit_rate_1 + rational_hit_rate_2) / 2) %>%
+  summarize(avg_hit_rate = mean(hit_rate),
+    rational_avg_hit_rate = mean(rational_hit_rate))  
 ```
 
 <!-- #################################################################### -->
@@ -374,12 +414,25 @@ t.test(belief_diff_flipped ~ (position_end_of_last_period == 'Not Invested'),
   data = dat_prepared)
 ```
 
+How much do they over-update on average?
+```{r avg_over_update}
+overupdates <- dat_main_long %>%
+  filter(i_block < 2,
+    updating_type != 'Wrong') %>%
+  group_by(participant_code) %>%
+  summarise(average_overupdate = mean(belief_diff_bayes_corrected_flipped,
+    na.rm = TRUE))
+
+  t.test(overupdates$average_overupdate, alternative = 'greater')
+```
+
+
 Figure showing the baseline updating interaction.
-Unmment the `updating_type != 'Wrong'` in the first filter statement to produce the plot excluding updates in the wrong direction.
+Uncomment the `updating_type != 'Wrong'` in the first filter statement to produce the plot excluding updates in the wrong direction.
 ```{r updating_baseline_bars, message = FALSE}
 dat_prepared <- dat_main_long %>%
   filter(position_end_of_last_period != 'No Returns',
-         # updating_type != 'Wrong',
+         updating_type != 'Wrong',
          i_block < 2) %>%
   mutate(belief_diff_bayes_corrected_flipped =
     belief_diff_bayes_corrected_flipped / 100)
@@ -429,7 +482,7 @@ Checking whether there is an interaction in the updating during the first two bl
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
          position_end_of_last_period %in% c('Gain', 'Loss'),
-         # updating_type != 'Wrong'
+         updating_type != 'Wrong'
     ) %>%
   transmute(price_move_from_last_corrected = dplyr::recode(
       price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),

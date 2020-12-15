@@ -1,4 +1,4 @@
-library(ggplot)
+library(ggplot2)
 library(plotly)
 
 theme_set(theme_minimal())

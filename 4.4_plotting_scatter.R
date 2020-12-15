@@ -20,6 +20,13 @@ ggplot(data = filter(complete_table, !is.na(main_condition)),
     labs(color = 'Condition', x = 'DE in Baseline Blocks', y = 'DE in Treatment Blocks')
     # Main exp: People stayed pretty consitant between Block 1 & 2.
 
+
+# DE vs. rational DE
+ggplot(complete_table,
+  aes(rational_de_34, de_34, color = main_condition)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+
 # To prevent sourcing
 if(FALSE){
   # DE per Study Field
@@ -154,3 +161,24 @@ dat_main_long %>%
   ggplot(aes(prop_long, prop_short)) +
   geom_point() +
   stat_smooth(method = 'lm')
+
+# Hit rates:
+complete_table %>%
+  mutate(baseline_hit_rates = (hit_rate_1 + hit_rate_2) / 2,
+    rational_baseline_hit_rates = (rational_hit_rate_1 +
+      rational_hit_rate_2) / 2) %>%
+  ggplot(aes(rational_baseline_hit_rates, baseline_hit_rates)) +
+    geom_point() +
+    geom_smooth(method = 'lm') +
+    geom_abline(intercept = 0, slope = 1, color = 'red')
+
+# Hit rates by treatment
+complete_table %>%
+  mutate(treatment_hit_rates = (hit_rate_3 + hit_rate_4) / 2,
+    rational_treatment_hit_rates = (rational_hit_rate_3 +
+      rational_hit_rate_4) / 2) %>%
+  ggplot(aes(rational_treatment_hit_rates, treatment_hit_rates,
+    color = main_condition)) +
+    geom_point() +
+    geom_smooth(method = 'lm') +
+    geom_abline(intercept = 0, slope = 1, color = 'red')

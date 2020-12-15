@@ -68,4 +68,5 @@ cb_dat_main_long$updating_type <- 'Whether the participant over- or under- updat
 
 # complete_table ----------------------------------------------------------
 
-
+cb_complete_table$hit_rate <- 'In what percentage of the periods did
+  the participant increase the overall portfolio value?'

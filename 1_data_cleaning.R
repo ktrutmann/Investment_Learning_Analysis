@@ -55,7 +55,7 @@ dat_main_long <- left_join(inv_task_dat_long, other_dat,
 # Re-save that dataframe with the additional variables
 # TODO: general comments are saved incorrectly! Fix that!
 write_delim(dat_main_long, file.path(clean_dat_path,
-    str_c('all_participants_long_main_', study_stage, '_cleaned.csv')),
+    str_c('all_participants_long_main_', study_stage, '.csv')),
             delim = ';')
 
 # Loading the data in case it gets lost again:
