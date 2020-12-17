@@ -51,6 +51,7 @@ rt_table <- as_tibble(matrix(NA, ncol = length(rt_table_vars),
   mutate_all(~ as.numeric(.))
 
 outcome_table_vars <- c('avg_hold_length', 'avg_short_length',
+  'rational_avg_hold_length', 'rational_avg_short_length',
   'n_holds', 'n_shorts', 'hit_rate', 'rational_hit_rate')
 outcome_table_vars <- outcome_table_vars %>%
   expand.grid(1:n_blocks) %>%
@@ -158,7 +159,11 @@ for (vpn in seq_along(all_files)) {
     long_inv_streaks <- c()
     short_pos_streaks <- c()
     this_inv_count <- 0
+    rational_long_inv_streaks <- c()
+    rational_short_pos_streaks <- c()
+    rational_this_inv_count <- 0
     for (i_time in seq(nrow(block_dat))) {
+      # Participant:
       if (block_dat$hold[i_time] != 0) {
         this_inv_count <- this_inv_count + 1
       }
@@ -170,6 +175,26 @@ for (vpn in seq_along(all_files)) {
           short_pos_streaks <- c(short_pos_streaks, this_inv_count)
         }
         this_inv_count <- 0
+      }
+
+        # Rational trader:
+      if (is.na(block_dat$rational_hold[i_time])) {  # first period
+        rational_this_inv_count <- rational_this_inv_count + 2 / 3
+      } else {
+        if (block_dat$rational_hold[i_time] != 0) {
+          rational_this_inv_count <- rational_this_inv_count + 1
+        }
+        if ((block_dat$rational_trade[i_time] != 0 |
+            i_time == nrow(block_dat)) & rational_this_inv_count != 0) {
+          if (block_dat$rational_hold[i_time] == 1) {
+            rational_long_inv_streaks <-
+              c(rational_long_inv_streaks, rational_this_inv_count)
+          } else if (block_dat$rational_hold[i_time] == -1) {
+            rational_short_pos_streaks <-
+              c(rational_short_pos_streaks, rational_this_inv_count)
+          }
+          rational_this_inv_count <- 0
+        }
       }
     }
 
@@ -183,16 +208,27 @@ for (vpn in seq_along(all_files)) {
     outcome_table[vpn, str_c('n_shorts_', block_nr)] <- ifelse(
       is.null(short_pos_streaks), 0, length(short_pos_streaks))
 
+    outcome_table[vpn, str_c('rational_avg_hold_length_', block_nr)] <-
+      mean(rational_long_inv_streaks)
+    outcome_table[vpn, str_c('rational_avg_short_length_', block_nr)] <-
+      mean(rational_short_pos_streaks)
+
+    outcome_table[vpn, str_c('rational_n_holds_', block_nr)] <-
+      length(rational_long_inv_streaks)
+    outcome_table[vpn, str_c('rational_n_shorts_', block_nr)] <-
+      length(rational_short_pos_streaks)
+
     # What was their hit-rate
     outcome_table[vpn, str_c('hit_rate_', block_nr)] <-
       sum((block_dat$price_diff_from_last > 0 & block_dat$hold == 1) |
       (block_dat$price_diff_from_last < 0 & block_dat$hold == -1),
-      na.rm = TRUE) / sum(block_dat$hold != 0, na.rm = TRUE)
+      na.rm = TRUE) / nrow(block_dat)
 
     outcome_table[vpn, str_c('rational_hit_rate_', block_nr)] <-
-      (sum((block_dat$price_diff_from_last > 0 & block_dat$rational_hold == 1) |
+      (sum((block_dat$price_diff_from_last > 0 &
+        block_dat$rational_hold == 1) |
       (block_dat$price_diff_from_last < 0 & block_dat$rational_hold == -1),
-      na.rm = TRUE)) / sum(block_dat$rational_hold != 0, na.rm = TRUE)
+      na.rm = TRUE)) / nrow(block_dat)
 
 # Reaction Times -----------------------------------------------------
     rt_table[vpn, str_c('mean_RT_', block_nr)] <- block_dat %>%

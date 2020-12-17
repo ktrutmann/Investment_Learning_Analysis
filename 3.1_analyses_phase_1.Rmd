@@ -89,7 +89,7 @@ median(complete_table$engagement)
 <!-- #################################################################### -->
 # Trading Behavior first phase
 
-What did they do in the very first round where no information was available?
+What did they do in the very first round where no information was available and how did the portfolios look afterwards?
 ```{r first_trade}
 dat_main_long %>%
   dplyr::filter(i_round_in_block == 0,
@@ -98,6 +98,14 @@ dat_main_long %>%
     invested = mean(transaction + hold == 1 & transaction != 0),
     liquidated = mean(transaction + hold == 0 & transaction != 0),
     shorted = mean(transaction + hold == -1 & transaction != 0))
+
+dat_main_long %>%
+  dplyr::filter(i_round_in_block == 1,
+    i_block < 2) %>%
+  summarize(
+    invested = mean(hold == 1),
+    liquidated = mean(hold == 0),
+    shorted = mean(hold == -1))
 ```
 
 Average holding/shorting frequency (what percentage of the periods did they hold or short the asset on average?):
@@ -138,21 +146,36 @@ dat_main_long %>%
 
 Average length of an investment period:
 ```{r avg_inv_length}
-summarize(complete_table,
+dat_prepared <- summarize(complete_table,
   all_avg_hold_length = (avg_hold_length_1 * n_holds_1 +
     avg_hold_length_2 * n_holds_2) / (n_holds_1 + n_holds_2),
   all_avg_short_length = (avg_short_length_1 * n_shorts_1 +
-    avg_short_length_2 * n_shorts_2) / (n_shorts_1 + n_shorts_2)) %>%
-  mutate(all_avg_short_length = replace_na(all_avg_short_length, 0)) %>%
+    avg_short_length_2 * n_shorts_2) / (n_shorts_1 + n_shorts_2),
+  rational_all_avg_hold_length = (rational_avg_hold_length_1 *
+    rational_n_holds_1 + rational_avg_hold_length_2 * rational_n_holds_2) /
+    (rational_n_holds_1 + rational_n_holds_2),
+  rational_all_avg_short_length = (rational_avg_short_length_1 *
+    rational_n_shorts_1 + rational_avg_short_length_2 * rational_n_shorts_2) /
+    (rational_n_shorts_1 + rational_n_shorts_2)) %>%
+  mutate(all_avg_short_length = replace_na(all_avg_short_length, 0),
   # Excluding those who held almost the whole time:
-  mutate(all_avg_hold_length = ifelse(
+    all_avg_hold_length = ifelse(
     all_avg_hold_length > 35, NA, all_avg_hold_length),
     all_avg_short_length = ifelse(
-      all_avg_short_length > 35, NA, all_avg_short_length)) %>%
-  summarize(avg_hold_length = mean(all_avg_hold_length, na.rm = TRUE),
-    sd_hold_lengths = sd(all_avg_hold_length, na.rm = TRUE),
-    avg_short_length = mean(all_avg_short_length, na.rm = TRUE),
-    sd_short_lengths = sd(all_avg_short_length, na.rm = TRUE)) %>%
+      all_avg_short_length > 35, NA, all_avg_short_length))
+
+summarize(dat_prepared,
+  avg_hold_length = mean(all_avg_hold_length, na.rm = TRUE),
+  sd_hold_lengths = sd(all_avg_hold_length, na.rm = TRUE),
+  avg_short_length = mean(all_avg_short_length, na.rm = TRUE),
+  sd_short_lengths = sd(all_avg_short_length, na.rm = TRUE)) %>%
+knitr::kable()
+
+summarize(dat_prepared,
+  rat_avg_hold_len = mean(rational_all_avg_hold_length, na.rm = TRUE),
+  rat_sd_hold_len = sd(rational_all_avg_hold_length, na.rm = TRUE),
+  rat_avg_short_len = mean(rational_all_avg_short_length, na.rm = TRUE),
+  rat_sd_short_len = sd(rational_all_avg_short_length, na.rm = TRUE)) %>%
   knitr::kable()
 ```
 
@@ -317,11 +340,21 @@ ggsave('event_analysis_trades.pdf',  device = 'pdf',
 
 
 ```{r hit_rates}
-complete_table %>%
+hit_rates <- complete_table %>%
   mutate(hit_rate = (hit_rate_1 + hit_rate_2) / 2,
     rational_hit_rate = (rational_hit_rate_1 + rational_hit_rate_2) / 2) %>%
   summarize(avg_hit_rate = mean(hit_rate),
-    rational_avg_hit_rate = mean(rational_hit_rate))  
+    rational_avg_hit_rate = mean(rational_hit_rate))
+
+hit_rates
+
+binom.test(x = as.integer(hit_rates$avg_hit_rate * 150),
+  n = 150,
+  p = hit_rates$rational_avg_hit_rate,
+  alternative = 'less')
+
+max(dat_main_long$i_round_in_block, na.rm = TRUE)
+
 ```
 
 <!-- #################################################################### -->
@@ -342,6 +375,7 @@ dat_prepared <- dat_main_long %>%
 olog_beliefs <- clmm(hold_lead ~ bayes_prob_up + belief +
   (1 | participant_code),
   data = dat_prepared)
+summary(olog_beliefs)
 coeftest(olog_beliefs)
 ```
 _(Robust to exclusion of inattentives!.)_
@@ -394,7 +428,6 @@ t.test(start_beliefs - 50)
 On average `r round(mean(start_beliefs == 50) * 100, 2)`% of blocks were started with a belief of $.5$.
 The average starting belief was `r round(mean(start_beliefs), 2)`
 
-
 Numbers about the amount of "inverse updates" in the data.
 ```{r update_type_table}
 dat_main_long %>%
@@ -404,28 +437,35 @@ dat_main_long %>%
   knitr::kable(caption = 'Was the Update Inverse?')
 ```
 
-Checking for a difference in updating strength of up and down movements when not invested.
-```{r not_inv_diff}
+Checking for a difference in overupdating between invested vs. not invested.
+```{r updating_diff_invested_not_invested}
 dat_prepared <- dat_main_long %>%
   filter(position_end_of_last_period != 'No Returns',
-    i_block < 2, updating_type != 'Wrong')
+    i_block < 2, updating_type != 'Wrong') %>%
+  mutate(was_invested = position_end_of_last_period != 'Not Invested')
 
-t.test(belief_diff_flipped ~ (position_end_of_last_period == 'Not Invested'),
+m1 <- lm(belief_diff_bayes_corrected_flipped ~ was_invested,
   data = dat_prepared)
+coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
 ```
 
 How much do they over-update on average?
 ```{r avg_over_update}
-overupdates <- dat_main_long %>%
+dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
-    updating_type != 'Wrong') %>%
-  group_by(participant_code) %>%
-  summarise(average_overupdate = mean(belief_diff_bayes_corrected_flipped,
-    na.rm = TRUE))
+    position_end_of_last_period == 'Not Invested',
+    # position_end_of_last_period %in% c('Gain', 'Loss'),
+    updating_type != 'Wrong'
+    )
 
-  t.test(overupdates$average_overupdate, alternative = 'greater')
+summarize(dat_prepared,
+  avg_update = mean(belief_diff_bayes_corrected_flipped, na.rm = TRUE),
+  sd_update = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE))
+
+m1 <- lm(belief_diff_bayes_corrected_flipped ~ 1,
+  data = dat_prepared)
+coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
 ```
-
 
 Figure showing the baseline updating interaction.
 Uncomment the `updating_type != 'Wrong'` in the first filter statement to produce the plot excluding updates in the wrong direction.
@@ -482,8 +522,8 @@ Checking whether there is an interaction in the updating during the first two bl
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
          position_end_of_last_period %in% c('Gain', 'Loss'),
-         updating_type != 'Wrong'
-    ) %>%
+         # !excluded.x,
+         updating_type != 'Wrong') %>%
   transmute(price_move_from_last_corrected = dplyr::recode(
       price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
     position_end_of_last_period = dplyr::recode(
@@ -494,14 +534,28 @@ dat_prepared <- dat_main_long %>%
 belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
   position_end_of_last_period * price_move_from_last_corrected,
    data = dat_prepared)
-
 coeftest(belief_updates_baseline,
          vcovCL(belief_updates_baseline,
            cluster = ~dat_prepared$participant_code))
-
 summary(belief_updates_baseline)
+
+ 
 ```
 _(robust to excluding inattentives)_
+
+```{r loss_updating_diff}
+dat_prepared <- dat_main_long %>%
+  filter(i_block < 2,
+    position_end_of_last_period == 'Loss',
+    updating_type != 'Wrong'
+    )
+
+m1 <- lm(belief_diff_bayes_corrected_flipped ~ price_move_from_last_corrected,
+  data = dat_prepared)
+coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
+
+
+```
 
 
 <!-- -------------------------------------------------------------------- -->

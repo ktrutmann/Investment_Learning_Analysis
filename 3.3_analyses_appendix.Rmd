@@ -246,11 +246,6 @@ DE of the first phase corrected for the benchmark. There is no significant diffe
 summary(lm(de_12 + .78 ~ main_condition, data = complete_table))
 ```
 
-The uncorrected differences in DE values between first and second phase compared between conditions.
-```{r de_conditions_treatments_raw}
-summary(lm(de_diff_12_34 ~ main_condition, data = complete_table))  
-```
-
 Finding out whether participants adhered to the shown probabilities in the states_shown condition.
 ```{r beliefs_states_shown}
 dat_main_long %>%
