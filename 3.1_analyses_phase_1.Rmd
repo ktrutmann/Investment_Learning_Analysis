@@ -22,6 +22,7 @@ library(tidyverse)
 theme_set(theme_minimal())
 # Color secifications for the plots
 col_set <- c('lightgrey', 'grey', 'darkgrey', 'black')
+# col_set <- c('cyan3', 'skyblue4', 'darkblue', 'black')
 
 # Loading data
 all_complete_tables <- str_subset(dir('Output/Tables/'), 'complete')
@@ -30,8 +31,8 @@ most_recent <- max(str_extract(all_complete_tables, '\\d{4}-\\d{2}-\\d{2}'))
 complete_table <- read_delim(str_c('Output//Tables//',
                                  str_subset(all_complete_tables, most_recent))[1], delim = ';')
 
-dat_main_long <- read_delim('..//Data//Clean//all_participants_long_main_main_study.csv',   
-                            delim = ';')
+dat_main_long <- read_delim(file.path('..', 'Data', 'Clean',
+  'all_participants_long_main_main_study.csv'), delim = ';')
 ```
 
 The following file presents the analyses as they are reported in the main paper in the order in which they are reported in the paper. The chunk names are also mentioned in the .tex files beside where the results are reported.
@@ -365,20 +366,47 @@ max(dat_main_long$i_round_in_block, na.rm = TRUE)
 ### Predictiveness of Beliefs
 
 Ordered logistic regression to determine how predictive beliefs are for investment decisions.
+Includes the residuals of beliefs predicted by the bayesian probability.
 ```{r olog_beliefs}
 # Order the levels of hold_lead
 dat_prepared <- dat_main_long %>%
     filter(i_block < 2) %>%
     mutate(hold_lead = factor(dplyr::lead(hold),
-        levels = c("-1", "0", "1"), ordered = TRUE))
+        levels = c("-1", "0", "1"), ordered = TRUE),
+      bayes_prob_up = bayes_prob_up * 100,
+      belief_residuals = lm(belief ~ bayes_prob_up)$residuals)
 
-olog_beliefs <- clmm(hold_lead ~ bayes_prob_up + belief +
+olog_beliefs <- clmm(hold_lead ~ belief_residuals + bayes_prob_up +
   (1 | participant_code),
   data = dat_prepared)
 summary(olog_beliefs)
 coeftest(olog_beliefs)
 ```
 _(Robust to exclusion of inattentives!.)_
+
+```{r olog_viz}
+# Requires dat_prepared from above!
+olog_beliefs <- clmm(hold_lead ~ belief + (1 | participant_code),
+  data = dat_prepared)
+effect_obj <- Effect(focal.predictors = c('belief'), xlevels = 101,
+  olog_beliefs)
+
+effect_obj$prob %>%
+  as_tibble() %>%
+  mutate(belief = 0:(n() - 1)) %>%
+  pivot_longer(cols = -'belief') %>%
+  mutate(name = factor(name,
+    levels = c('prob.X1', 'prob.X0', 'prob.X.1'),
+    labels = c('Holding', 'Not Invested', 'Shorting'))) %>%
+  ggplot(aes(belief, value, group = 1)) +
+    geom_line(size = 1) +
+    facet_grid(rows = vars(name)) +
+    labs(x = 'Belief', y = 'Probability') +
+    theme(panel.spacing = unit(2, "lines"))
+
+ggsave('olog_prob_predictions.pdf',  device = 'pdf',
+  width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
 
 The same but focusing on trade decisions with a gain/loss dummy.
 ```{r olog_beliefs_buy_sell}
@@ -472,17 +500,17 @@ Uncomment the `updating_type != 'Wrong'` in the first filter statement to produc
 ```{r updating_baseline_bars, message = FALSE}
 dat_prepared <- dat_main_long %>%
   filter(position_end_of_last_period != 'No Returns',
-         updating_type != 'Wrong',
+         # updating_type != 'Wrong',
          i_block < 2) %>%
-  mutate(belief_diff_bayes_corrected_flipped =
+  mutate(target_measure = # belief_bayes_residual)
     belief_diff_bayes_corrected_flipped / 100)
 
 dat_prepared_1 <- dat_prepared %>%
   filter(position_end_of_last_period != 'Not Invested') %>%
   group_by(position_end_of_last_period, price_move_from_last_corrected) %>%
   summarise(mean_update = mean(
-              belief_diff_bayes_corrected_flipped, na.rm = TRUE),
-            SE = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE) /
+              target_measure, na.rm = TRUE),
+            SE = sd(target_measure, na.rm = TRUE) /
               sqrt(n()),
             CI_90_lower = mean_update - SE * qt(.95, n()),
             CI_90_upper = mean_update + SE * qt(.95, n()))
@@ -490,8 +518,8 @@ dat_prepared_1 <- dat_prepared %>%
 dat_prepared_2 <- dat_prepared %>%
   filter(position_end_of_last_period == 'Not Invested') %>%
   summarise(mean_update = mean(
-              belief_diff_bayes_corrected_flipped, na.rm = TRUE),
-            SE = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE) /
+              target_measure, na.rm = TRUE),
+            SE = sd(target_measure, na.rm = TRUE) /
               sqrt(n()),
             CI_90_lower = mean_update - SE * qt(.95, n()),
             CI_90_upper = mean_update + SE * qt(.95, n())) %>%
@@ -509,25 +537,32 @@ ggplot(dat_prepared,
   geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
                     width = .1, color = tail(col_set, 1)) +
   scale_fill_manual(name = '', values = c(col_set[1:3])) +
+  # ylim(0, .3) +
   labs(x = 'Position and Price Move',
     y = 'Average Corrected Belief Update') +
   theme(legend.position = 'none')
 
-# ggsave('updating_baseline_wrong_included_bars.pdf',  device = 'pdf',
-#   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
+ggsave('updating_baseline_wrong_included_bars.pdf',  device = 'pdf',
+  width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
+
+
+derp <- rnorm(-.5, .5, n = 10000)
+qplot(pnorm(derp), bins = 80)
 ```
 
-Checking whether there is an interaction in the updating during the first two blocks. These effects are __effect coded!__ and clustered by participant. Comment out the `updating_type != 'Wrong'` filter to get the results with wrong updates included.
+
+Checking whether there is an interaction in the updating during the first two blocks. These effects are __dummy coded!__ and clustered by participant. Comment out the `updating_type != 'Wrong'` filter to get the results with wrong updates included.
 ```{r updating_baseline_test}
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
          position_end_of_last_period %in% c('Gain', 'Loss'),
          # !excluded.x,
-         updating_type != 'Wrong') %>%
+         updating_type != 'Wrong'
+         ) %>%
   transmute(price_move_from_last_corrected = dplyr::recode(
-      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+      price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
     position_end_of_last_period = dplyr::recode(
-      position_end_of_last_period, 'Loss' = -.5, 'Gain' = .5),
+      position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
     belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100,
     participant_code = participant_code)
 
@@ -537,11 +572,46 @@ belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
 coeftest(belief_updates_baseline,
          vcovCL(belief_updates_baseline,
            cluster = ~dat_prepared$participant_code))
-summary(belief_updates_baseline)
-
- 
 ```
 _(robust to excluding inattentives)_
+
+Doing the same test but this time including the Bayesian probability as a predictor to include the "uncorrected" version.
+```{r update_baseline_uncorrected_tests}
+dat_prepared <- dat_main_long %>%
+  filter(i_block < 2,
+         updating_type != 'Wrong') %>%
+  mutate(inv_dummy = position_end_of_last_period != 'Not Invested',
+    price_move = dplyr::recode(
+      price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
+    position = dplyr::recode(
+      position_end_of_last_period, 'Loss' = 0, 'Gain' = 1, .default = 999),
+    bayes_diff_flipped = bayes_diff_flipped * 100)
+
+beliefs_by_inv <- lm(belief_diff_flipped ~
+  bayes_diff_flipped * inv_dummy, data = dat_prepared)
+coeftest(beliefs_by_inv,
+         vcovCL(beliefs_by_inv,
+           cluster = ~dat_prepared$participant_code))
+
+beliefs_test_uncor <- lm(belief_diff_flipped ~
+  position * price_move + bayes_diff_flipped,
+  data = dplyr::filter(dat_prepared, position < 2))
+coeftest(beliefs_test_uncor,
+         vcovCL(beliefs_test_uncor,
+           cluster = ~dplyr::filter(dat_prepared, position < 2)$participant_code))
+
+```
+
+```{r update_differences}
+dat_main_long %>%
+  filter(i_block < 2,
+         position_end_of_last_period %in% c('Gain', 'Loss'),
+         # !excluded.x,
+         updating_type != 'Wrong') %>%
+  # group_by(position_end_of_last_period) %>%
+  summarize(mean = mean(belief_diff_bayes_corrected_flipped),
+    sd = sd(belief_diff_bayes_corrected_flipped))
+```
 
 ```{r loss_updating_diff}
 dat_prepared <- dat_main_long %>%
@@ -553,8 +623,6 @@ dat_prepared <- dat_main_long %>%
 m1 <- lm(belief_diff_bayes_corrected_flipped ~ price_move_from_last_corrected,
   data = dat_prepared)
 coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
-
-
 ```
 
 
@@ -571,6 +639,17 @@ dat_main_long %>%
     sd_belief = sd(belief / 100),
     avg_bayes = mean(bayes_prob_up),
     avg_distance_to_bayes = mean(bayes_prob_up - belief / 100))
+```
+
+```{r beliefs_at_trades_test}
+dat_main_long %>%
+  dplyr::filter(abs(transaction) == 1,
+    position != 'No Returns',
+    i_block < 2,
+    transaction == -1,
+    position != 'Not Invested'
+    ) %>%
+  {t.test(.$belief - 50, alternative = 'less')}
 ```
 
 First we look at the made and forgone profit 3 periods after buys or sales (excluding shorts for now).

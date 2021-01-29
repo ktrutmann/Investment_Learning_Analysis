@@ -171,7 +171,6 @@ dat_prepared_diff <- dat_main_long %>%
          fill = 'Condition') +
     theme(text = element_text(size = text_size))
 
-  }
 }
 
 # Updating as in Paper ---------------------------------------------------

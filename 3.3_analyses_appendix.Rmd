@@ -190,27 +190,25 @@ coeftest(belief_updates_baseline,
            cluster = ~dat_prepared$participant_code))
 ```
 
-Checking whether there is an interaction in the updating during the first two blocks when correcting for a RL learner. These effects are __effect coded!__ and clustered by participant. Comment out the `updating_type != 'Wrong'` filter to get the results with wrong updates included.
+Checking whether there is an interaction in the updating during the first two blocks when correcting for a RL learner. These effects are __dummy coded!__ and clustered by participant. Comment out the `updating_type != 'Wrong'` filter to get the results with wrong updates included.
 ```{r updating_baseline_test_rl}
 dat_prepared <- dat_main_long %>%
   dplyr::filter(i_block < 2,
          position_end_of_last_period %in% c('Gain', 'Loss'),
-         # updating_type != 'Wrong'
+         updating_type != 'Wrong'
     ) %>%
   mutate(price_move_from_last_corrected = recode(
-      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+      price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
     position_end_of_last_period = recode(position_end_of_last_period,
-      'Loss' = -.5, 'Gain' = .5),
-    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped /
-      100)
+      'Loss' = 0, 'Gain' = 1))
 
-belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
+belief_updates_baseline <- lm(belief_diff_rl_corrected_flipped ~
   position_end_of_last_period * price_move_from_last_corrected,
    data = dat_prepared)
 
 coeftest(belief_updates_baseline,
          vcovCL(belief_updates_baseline,
-           cluster = ~dat_prepared$participant_code)) 
+           cluster = ~dat_prepared$participant_code))
 ```
 _(robust to excluding inattentives)_
 
@@ -300,7 +298,7 @@ dat_prepared <- dat_main_long %>%
          condition == 'states_shown',
          i_block > 1) %>%
   mutate(belief_diff_from_last =
-    belief_diff_from_last / 100)
+    belief_diff_bayes_corrected_flipped / 100)
 
 dat_prepared_1 <- dat_prepared %>%
 dplyr::filter(position_end_of_last_period != 'Not Invested') %>%

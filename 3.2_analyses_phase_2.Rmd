@@ -65,13 +65,6 @@ dat_main_long %>%
   filter(i_block > 1) %>%
   group_by(condition) %>%
   summarize(avg_hold = mean(hold != 0) * 100)
-
-    condition    avg_hold_all
-  <chr>               <dbl>
-1 baseline             82.5
-2 probs_shown          77.3
-3 states_shown         86.3
-
 ```
 
 <!-- #################################################################### -->
@@ -126,7 +119,7 @@ Uncomment the `updating_type != 'Wrong'` in the first filter statement to produc
 dat_prepared <- dat_main_long %>%
   filter(position_end_of_last_period != 'No Returns',
          condition != 'states_shown',
-         # updating_type != 'Wrong',
+         updating_type != 'Wrong',
          i_block > 1) %>%
   mutate(belief_diff_bayes_corrected_flipped =
     belief_diff_bayes_corrected_flipped / 100)

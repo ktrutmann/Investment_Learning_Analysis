@@ -6,7 +6,7 @@ study_stage <- 'main_study'  # With what part of the study are we dealing here?
 clean_dat_path <- file.path('..', 'Data', 'Clean')
 
 dat_main_long <- read_delim(file.path(clean_dat_path,
-  str_c('all_participants_long_main_', study_stage, '_cleaned.csv')),
+  str_c('all_participants_long_main_', study_stage, '.csv')),
 delim = ';')
 
 
@@ -115,14 +115,22 @@ dat_main_long <- dat_main_long %>%
     price_move_from_last_corrected, hold),
    belief_diff_flipped = if_else(price_diff_from_last > 0,
     belief_diff_from_last, - belief_diff_from_last),
+   bayes_diff_flipped = if_else(price_diff_from_last > 0,
+    bayes_diff_from_last, - bayes_diff_from_last),
    belief_diff_bayes_corrected_flipped = if_else(
     price_diff_from_last > 0,
     belief_diff_bayes_corrected, - belief_diff_bayes_corrected),
    belief_diff_rl_corrected_flipped = if_else(
     price_diff_from_last > 0,
-    belief_diff_rl_corrected, - belief_diff_rl_corrected)
+    belief_diff_rl_corrected, - belief_diff_rl_corrected),
   )
 
+  dat_main_long$belief_bayes_residual <- NA
+  dat_main_long$belief_bayes_residual[!is.na(dat_main_long$belief)] <-
+    lm(belief / 100 ~ bayes_prob_up, data = dat_main_long)$residuals
+
+  # TODO: (1) We need the diff() for the updating and we need to flip them!
+  
 # "Optimal Trading" -----------------------------------------------------------
 dat_main_long$rational_hold <- case_when(
   dplyr::lag(dat_main_long$bayes_prob_up) > .5 ~ 1,

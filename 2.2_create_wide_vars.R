@@ -333,10 +333,10 @@ if (study_stage != 'param_recov') {
     str_c(complete_table$excluded_reason[complete_table$never_held_all_blocks],
           'Never_Held, ')
 
-  dat_main_long <- left_join(dat_main_long,
-      complete_table[, c('participant_code', 'excluded', 'excluded_reason')],
-      by = 'participant_code')
-
+  dat_main_long <- left_join(
+    dplyr::select(dat_main_long, -contains('excluded')),
+    complete_table[, c('participant_code', 'excluded', 'excluded_reason')],
+    by = 'participant_code')
 
 # Saving the Output ###################################################
   write_delim(de_table,
