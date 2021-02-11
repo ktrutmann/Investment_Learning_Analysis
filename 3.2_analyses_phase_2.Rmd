@@ -96,21 +96,21 @@ dat_prepared <- dat_main_long %>%
          # updating_type != 'Wrong'
          condition != 'states_shown') %>%
   dplyr::mutate(price_move_from_last_corrected = dplyr::recode(
-      price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
+      price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
     position_end_of_last_period = dplyr::recode(
-      position_end_of_last_period, 'Loss' = -.5, 'Gain' = .5),
+      position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
     condition = dplyr::recode(
-      condition, 'baseline' = -.5, 'probs_shown' = .5),
+      condition, 'baseline' = 0, 'probs_shown' = 1),
     belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100)
 
 belief_updates_treatment <- lm(belief_diff_bayes_corrected_flipped ~
-  position_end_of_last_period * price_move_from_last_corrected * condition,
+  position_end_of_last_period * price_move_from_last_corrected * condition +
+  age + gender,
    data = dat_prepared)
 
 coeftest(belief_updates_treatment,
          vcovCL(belief_updates_treatment,
            cluster = ~dat_prepared$participant_code))
-summary(belief_updates_treatment)
 ```
 
 Figure showing the updating interaction for the different treatments.
@@ -249,10 +249,12 @@ t.test(filter(dat_prepared, main_condition == 'probs_shown')$de_diff_12_34,
 t.test(filter(dat_prepared, main_condition == 'states_shown')$de_diff_12_34,
   alternative = 'less')
 
-summary(lm(de_diff_12_34 ~ main_condition, data = dat_prepared))
+summary(lm(de_diff_12_34 ~ main_condition + age + gender,
+  data = dat_prepared))
 
 # Using the raw DE values:
-summary(lm(de_diff_12_34 ~ main_condition, data = complete_table))  
+summary(lm(de_diff_12_34 ~ main_condition + age + gender,
+  data = complete_table))  
 ```
 
 

@@ -376,8 +376,8 @@ dat_prepared <- dat_main_long %>%
       bayes_prob_up = bayes_prob_up * 100,
       belief_residuals = lm(belief ~ bayes_prob_up)$residuals)
 
-olog_beliefs <- clmm(hold_lead ~ belief_residuals + bayes_prob_up +
-  (1 | participant_code),
+olog_beliefs <- clmm(hold_lead ~ belief + age +
+  gender + (1 | participant_code),
   data = dat_prepared)
 summary(olog_beliefs)
 coeftest(olog_beliefs)
@@ -544,10 +544,6 @@ ggplot(dat_prepared,
 
 ggsave('updating_baseline_wrong_included_bars.pdf',  device = 'pdf',
   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
-
-
-derp <- rnorm(-.5, .5, n = 10000)
-qplot(pnorm(derp), bins = 80)
 ```
 
 
@@ -564,10 +560,12 @@ dat_prepared <- dat_main_long %>%
     position_end_of_last_period = dplyr::recode(
       position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
     belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100,
-    participant_code = participant_code)
+    participant_code = participant_code,
+    age = age,
+    gender = gender)
 
 belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
-  position_end_of_last_period * price_move_from_last_corrected,
+  position_end_of_last_period * price_move_from_last_corrected + age + gender,
    data = dat_prepared)
 coeftest(belief_updates_baseline,
          vcovCL(belief_updates_baseline,
