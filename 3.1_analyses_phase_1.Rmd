@@ -469,7 +469,9 @@ Checking for a difference in overupdating between invested vs. not invested.
 ```{r updating_diff_invested_not_invested}
 dat_prepared <- dat_main_long %>%
   filter(position_end_of_last_period != 'No Returns',
-    i_block < 2, updating_type != 'Wrong') %>%
+    i_block < 2,
+    # updating_type != 'Wrong'
+    ) %>%
   mutate(was_invested = position_end_of_last_period != 'Not Invested')
 
 m1 <- lm(belief_diff_bayes_corrected_flipped ~ was_invested,
@@ -481,9 +483,9 @@ How much do they over-update on average?
 ```{r avg_over_update}
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
-    position_end_of_last_period == 'Not Invested',
+    # position_end_of_last_period == 'Not Invested',
     # position_end_of_last_period %in% c('Gain', 'Loss'),
-    updating_type != 'Wrong'
+    # updating_type != 'Wrong'
     )
 
 summarize(dat_prepared,
@@ -553,7 +555,7 @@ dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
          position_end_of_last_period %in% c('Gain', 'Loss'),
          # !excluded.x,
-         updating_type != 'Wrong'
+         # updating_type != 'Wrong'
          ) %>%
   transmute(price_move_from_last_corrected = dplyr::recode(
       price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
@@ -604,21 +606,22 @@ coeftest(beliefs_test_uncor,
 dat_main_long %>%
   filter(i_block < 2,
          position_end_of_last_period %in% c('Gain', 'Loss'),
-         # !excluded.x,
-         updating_type != 'Wrong') %>%
-  # group_by(position_end_of_last_period) %>%
-  summarize(mean = mean(belief_diff_bayes_corrected_flipped),
-    sd = sd(belief_diff_bayes_corrected_flipped))
+         # updating_type != 'Wrong'
+         ) %>%
+  group_by(position_end_of_last_period, price_move_from_last_corrected) %>%
+  summarize(mean = mean(belief_diff_bayes_corrected_flipped, na.rm = TRUE),
+    sd = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE))
 ```
 
-```{r loss_updating_diff}
+```{r updating_diff_test}
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
-    position_end_of_last_period == 'Loss',
-    updating_type != 'Wrong'
+    position_end_of_last_period %in% c('Gain', 'Loss'),
+    price_move_from_last_corrected == 'Unfavorable',
+    # updating_type != 'Wrong'
     )
 
-m1 <- lm(belief_diff_bayes_corrected_flipped ~ price_move_from_last_corrected,
+m1 <- lm(belief_diff_bayes_corrected_flipped ~ position_end_of_last_period,
   data = dat_prepared)
 coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
 ```
