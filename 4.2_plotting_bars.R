@@ -67,17 +67,17 @@ ggplot(dat_prepared, aes(x = main_condition, y = mean_DE,
   scale_x_discrete(labels = c('Baseline', 'Partial Info.', 'Full Info.')) +
   scale_fill_manual(values = c(rgb(0.77, 0.92, 0.92),
     rgb(0.656, 0.856, 0.836), rgb(0.56, 0.76, 0.74))) +
-  annotate('text', 2, -.21, label = '*', size = 25) +
-  annotate('text', 2, -.81, label = '*', size = 25) +
-  annotate('text', 3, -.81, label = '*', size = 25) +
-  annotate('segment', 1, -.77, xend = 3, yend = -.77, size = 1) +
-  annotate('segment', 1, -.77, xend = 1, yend = -.75, size = 1) +
-  annotate('segment', 3, -.77, xend = 3, yend = -.75, size = 1) +
+  annotate('text', 2, -.21, label = '*', size = 12) +
+  annotate('text', 2, -.85, label = '*', size = 12) +
+  annotate('text', 3, -.77, label = '*', size = 12) +
+  annotate('segment', 1, -.8, xend = 3, yend = -.8, size = .8) +
+  annotate('segment', 1, -.8, xend = 1, yend = -.78, size = .8) +
+  annotate('segment', 3, -.8, xend = 3, yend = -.78, size = .8) +
   theme(legend.position = 'none',
-    text = element_text(size = 44))
+    text = element_text(size = 16))
 
-ggsave('de_diff_conditions_bars_col.png',  device = 'png',
-  width = 20, height = 14, path = file.path('Output', 'Plots', 'Bars'))
+ggsave('de_diff_conditions_bars_col.pdf',  device = 'pdf',
+  width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
 
 
 # Belief updating: #####################################################
