@@ -198,16 +198,19 @@ _(The result is robust to exclusion.)_
 
 This plot looks at the price developments after a trade.
 The price movements are flipped for short-sales and for liquidations of short sales (because we want to see what would have happened had they held the short further).
+
 Jumps should be disregarded, as they can have two effects:
 Either one counts a jump as the closing and subsequent opening of an investment, in which case they influence both bins symmetrically in oposite directions, or one only regards jumps as opening an investment, which disregards the fact that another investment needs to be given up for it.
 
-```{r price_after_trades}
-n_shifts <- 4
+Lastly there is the option to only look at the price movements, not the amounts to make the result less dependent on the random character of the magnitude of the price movements.
 
-jumps <- which(abs(dat_main_long$transaction) == 2 &
-  dat_main_long$i_block < 2)
-target_moves <- c(which(abs(dat_main_long$transaction) == 1 &
-  dat_main_long$i_block < 2), jumps)
+```{r price_after_trades}
+n_shifts <- 2
+filtered_df <- dplyr::filter(dat_main_long, i_block < 2)
+
+jumps <- which(abs(filtered_df$transaction) == 2)
+jumps <- numeric() # To exclude jumps
+target_moves <- c(which(abs(filtered_df$transaction) == 1), jumps) # Change to != 0 when including jumps
 
 # Jumps get a second entry
 moves_after_decision <- tibble(
@@ -217,15 +220,16 @@ moves_after_decision <- tibble(
   was_jump = c(rep(FALSE,
     (length(target_moves) - length(jumps)) * n_shifts),
                 rep(TRUE, length(jumps) * n_shifts))) %>%
-  mutate(trade_ix = original_trade_ix + target_shift)
+  mutate(trade_ix = original_trade_ix + target_shift) %>%
+  filter(trade_ix < nrow(filtered_df))
 
-full_shift_df <- dat_main_long %>%
+full_shift_df <- filtered_df %>%
   dplyr::select(hold, transaction, price) %>%
   dplyr::slice(moves_after_decision$trade_ix) %>%
   bind_cols(moves_after_decision) %>%
-  group_by(trade_id) %>%  
+  group_by(trade_id) %>%
   mutate(original_hold = hold[target_shift == 0],
-    original_move = factor(transaction[target_shift == 0]),
+    original_move = transaction[target_shift == 0],
     price_normal = price - price[target_shift == 0], # Normalizing price
     price_normal = case_when(
       original_hold == 0 & original_move == -1 ~ - price_normal,
@@ -234,12 +238,14 @@ full_shift_df <- dat_main_long %>%
       TRUE ~ price_normal),
     trade_direction = case_when(
       original_hold == 0 ~ 'Open',
-      was_jump ~ 'Jump',
+      was_jump ~ 'Open',
+      original_hold != 0 & !was_jump ~ 'Close',
       TRUE ~ 'Close'),
     hold_length = rle(hold)[[1]][2],  # For removing rounds after new trades 
     n_blocks = length(unique(i_block))) %>%  # For removing block overlaps
+  mutate(price_normal = sign(price_normal)) %>% # Uncomment for the actual prices, rather than -1 and 1.
   ungroup() %>%
-  filter(n_blocks == 1, target_shift <= hold_length)
+  filter(n_blocks == 1)
 
 dat_prepared <- full_shift_df %>%
   group_by(trade_direction, target_shift) %>%
@@ -253,37 +259,39 @@ ggplot(dat_prepared,
   aes(x = target_shift, y = avg_price, color = trade_direction)) +
   geom_hline(yintercept = 0, size = .5) +
   geom_line(size = 1.25) +
-  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = .025) +
-  # scale_color_manual(
-    # values = c('Open' = rgb(0.45, 0.65, 0.63),
-    #            'Close' = rgb(0.656, 0.856, 0.836))) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = .025,
+    position = position_dodge(.05)) +
   labs(x = 'Periods since Transaction', y = 'Mean Return',
-       color = 'Transaction', group = 'Transaction') +
+       color = 'Transaction', group = 'Transaction',
+       title = 'Phase 1, Excluding Jumps',
+       subtitle = 'Ups / Downs coded as 1 / -1') +
   theme(text = element_text(size = 16))
     # values = c('Invest' = 'Black', 'Liquidate' = '#888888')) +
 
-ggsave('price_after_trades_col.pdf',  device = 'pdf',
+ggsave('price_moves_after_trades_col.pdf',  device = 'pdf',
   width = 10, height = 7, path = file.path('Output', 'Plots'))
 ```
 
 
 ```{r price_after_rational_trades}
+n_shifts <- 20
 
-jumps <- which(abs(dat_main_long$rational_trade) == 2 &
-  dat_main_long$i_block < 2)
-target_moves <- c(which(dat_main_long$rational_trade != 0 &
-  dat_main_long$i_block < 2), jumps)
+filtered_df <- dplyr::filter(dat_main_long, i_block < 2)
+
+jumps <- which(abs(filtered_df$rational_trade) == 2)
+target_moves <- c(which(abs(filtered_df$rational_trade) != 0), jumps)
 
 # Jumps get a second entry
 moves_after_decision <- tibble(
-  original_trade_ix = rep(target_moves, each = 6),
-  trade_id = rep(seq_along(target_moves), each = 6),
-  target_shift = rep(0:5, length(target_moves)),
-  was_jump = c(rep(FALSE, (length(target_moves) - length(jumps)) * 6),
-                rep(TRUE, length(jumps) * 6))) %>%
-  mutate(trade_ix = original_trade_ix + target_shift)
+  original_trade_ix = rep(target_moves, each = n_shifts),
+  trade_id = rep(seq_along(target_moves), each = n_shifts),
+  target_shift = rep(0:(n_shifts - 1), length(target_moves)),
+  was_jump = c(rep(FALSE, (length(target_moves) - length(jumps)) * n_shifts),
+                rep(TRUE, length(jumps) * n_shifts))) %>%
+  mutate(trade_ix = original_trade_ix + target_shift)%>%
+  filter(trade_ix < nrow(filtered_df))
 
-full_shift_df <- dat_main_long %>%
+full_shift_df <- filtered_df %>%
   dplyr::select(rational_hold, rational_trade, price) %>%
   dplyr::slice(moves_after_decision$trade_ix) %>%
   bind_cols(moves_after_decision) %>%
@@ -296,12 +304,15 @@ full_shift_df <- dat_main_long %>%
       original_hold == -1 & !was_jump ~ - price_normal,
       original_hold == 1 & was_jump ~ - price_normal,
       TRUE ~ price_normal),
-    trade_direction = if_else(
-      original_hold == 0 | was_jump, 'Invest', 'Liquidate'),
-    hold_length = rle(rational_hold)[[1]][2],
+    trade_direction = case_when(
+      original_hold == 0 ~ 'Open',
+      was_jump ~ 'Open',
+      original_hold != 0 & !was_jump ~ 'Close',
+      TRUE ~ 'Close'),
+    # hold_length = rle(rational_hold)[[1]][2],
     n_blocks = length(unique(i_block))) %>%  # Removing block overlaps
   ungroup() %>%
-  filter(n_blocks == 1, target_shift <= hold_length)
+  filter(n_blocks == 1)
 
 dat_prepared <- full_shift_df %>%
   group_by(trade_direction, target_shift) %>%
@@ -317,16 +328,45 @@ ggplot(dat_prepared,
   geom_line(size = 1.25) +
   geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper),
     position = position_dodge(), width = .05) +
-  scale_color_manual(
-    values = c('Invest' = rgb(0.45, 0.65, 0.63),
-               'Liquidate' = rgb(0.656, 0.856, 0.836))) +
   labs(x = 'Periods since Transaction', y = 'Mean Return',
-       color = 'Transaction', group = 'Transaction') +
+       color = 'Transaction', group = 'Transaction',
+       title = 'Phase 1, Bayesian Investor, Including Jumps') +
   theme(text = element_text(size = 16))
     # values = c('Invest' = 'Black', 'Liquidate' = '#888888')) +
 
 ggsave('price_after_rational_trades_col.pdf',  device = 'pdf',
   width = 10, height = 7, path = file.path('Output', 'Plots'))
+```
+
+Let's now check how many times participants were correct in either opening or closing investment positions.
+"Correct" here means a price increase (decrease) after buying (shorting) and vice versa.
+
+```{r correct_trades}
+correct_trades_table <- dat_main_long %>%
+  select(hold, transaction, price_diff_to_next,
+    position) %>%
+  filter(transaction != 0) %>%
+  mutate(correct_trade = sign(transaction) == sign(price_diff_to_next),
+    trade_type = case_when(hold == 0 ~ 'Open',
+      abs(transaction) == 2 &
+        position == 'Gain' ~ 'Gain Jump',
+      abs(transaction) == 2 &
+        position == 'Loss' ~ 'Loss Jump',
+      abs(transaction) == 2 & position == 'No Returns' ~ 'No Return Jump',
+      abs(transaction) == 1 & position == 'Gain' ~ 'Gain Close',
+      abs(transaction) == 1 & position == 'Loss' ~ 'Loss Close',
+      abs(transaction) == 1 & position == 'No Returns' ~ 'No Returns Close',
+      TRUE ~ 'Close')) %>%
+  group_by(trade_type) %>%
+  summarize(avg_correct_trades = mean(correct_trade),
+    n_such_trades = n())
+
+  correct_trades_table
+
+  ggplot(correct_trades_table,
+    aes(x = trade_type, y = avg_correct_trades)) +
+    geom_bar(stat = 'identity') +
+    coord_cartesian(ylim = c(.4, .55))
 ```
 
 Now we look at their beliefs at the trades.

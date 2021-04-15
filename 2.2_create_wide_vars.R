@@ -220,15 +220,15 @@ for (vpn in seq_along(all_files)) {
 
     # What was their hit-rate
     outcome_table[vpn, str_c('hit_rate_', block_nr)] <-
-      sum((block_dat$price_diff_from_last > 0 & block_dat$hold == 1) |
+      mean((block_dat$price_diff_from_last > 0 & block_dat$hold == 1) |
       (block_dat$price_diff_from_last < 0 & block_dat$hold == -1),
-      na.rm = TRUE) / nrow(block_dat)
+      na.rm = TRUE) 
 
     outcome_table[vpn, str_c('rational_hit_rate_', block_nr)] <-
-      (sum((block_dat$price_diff_from_last > 0 &
+      mean((block_dat$price_diff_from_last > 0 &
         block_dat$rational_hold == 1) |
       (block_dat$price_diff_from_last < 0 & block_dat$rational_hold == -1),
-      na.rm = TRUE)) / nrow(block_dat)
+      na.rm = TRUE)
 
 # Reaction Times -----------------------------------------------------
     rt_table[vpn, str_c('mean_RT_', block_nr)] <- block_dat %>%
