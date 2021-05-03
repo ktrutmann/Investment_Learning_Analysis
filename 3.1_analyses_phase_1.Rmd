@@ -342,10 +342,10 @@ Let's now check how many times participants were correct in either opening or cl
 "Correct" here means a price increase (decrease) after buying (shorting) and vice versa.
 
 ```{r correct_trades}
-correct_trades_table <- dat_main_long %>%
+dat_main_long %>%
   select(hold, transaction, price_diff_to_next,
     position) %>%
-  filter(transaction != 0) %>%
+  filter(i_block < 2, transaction != 0) %>%
   mutate(correct_trade = sign(transaction) == sign(price_diff_to_next),
     trade_type = case_when(hold == 0 ~ 'Open',
       abs(transaction) == 2 &
@@ -359,14 +359,10 @@ correct_trades_table <- dat_main_long %>%
       TRUE ~ 'Close')) %>%
   group_by(trade_type) %>%
   summarize(avg_correct_trades = mean(correct_trade),
-    n_such_trades = n())
-
-  correct_trades_table
-
-  ggplot(correct_trades_table,
-    aes(x = trade_type, y = avg_correct_trades)) +
+    n_such_trades = n()) %>%
+  ggplot(aes(x = trade_type, y = avg_correct_trades)) +
     geom_bar(stat = 'identity') +
-    coord_cartesian(ylim = c(.4, .55))
+    coord_cartesian(ylim = c(.45, .55))
 ```
 
 Now we look at their beliefs at the trades.
@@ -430,17 +426,17 @@ ggplot(aes(x = shift, y = avg_hold, color = original_switch_type,
   geom_line(size = 1) +
   geom_vline(xintercept = 0, linetype = 'dashed') +
   geom_text(x = 2, y = .255, label = 'Changing from bad to good state',
-    color = '#202020', size = 4) +
+    color = '#202020', size = 6) +
   geom_text(x = 2, y = .08, label = 'Changing from good to bad state',
-    color = '#202020', size = 4) +
+    color = '#202020', size = 6) +
   labs(x = 'Rounds, centered around change in asset state',
     y = 'Average Investment',
     group = 'Switch Type', color = 'Switch Type') +
   scale_color_manual(values = c(col_set[1], col_set[3])) +
   scale_x_continuous(breaks = window) +
   theme(panel.grid.minor.x = element_blank(),
-    legend.position = 'none')
-
+    legend.position = 'none',
+    text = element_text(size = 16))
 
 ggsave('event_analysis_trades.pdf',  device = 'pdf',
   width = 10, height = 7, path = file.path('Output', 'Plots'))

@@ -47,7 +47,7 @@ dat_prepared <- dat_main_long %>%
 
 dat_prepared %>%
   group_by(condition) %>%
-  summarize(derp = mean(earnings))
+  summarize(avg_earnings = mean(earnings))
 
 summary(lm(earnings ~ condition, data = dat_prepared))
 
@@ -56,7 +56,7 @@ qplot(dat_prepared$earnings)
 
 ```{r rationality_by_condition}
 summary(lm(hold ~ rational_hold * condition,
-  data = filter(dat_main_long, i_block > 1)))
+  data = filter(dat_main_long, i_block > 1, condition != 'states_shown')))
 ```
 
 Checking the frequency of investments (i.e. in how many periods they were invested) for the different conditions.
@@ -86,6 +86,29 @@ dat_prepared %>%
 
 <!-- -------------------------------------------------------------------- -->
 ## Belief Formation
+
+First testing the same models as in phase 1 but with the groups of phase 2.
+```{r updating_phase_2_by_groups}
+dat_prepared <- dat_main_long %>%
+  filter(i_block > 1,
+         position_end_of_last_period %in% c('Gain', 'Loss'),
+         # updating_type != 'Wrong'
+         condition == 'baseline') %>%
+  dplyr::mutate(price_move_from_last_corrected = dplyr::recode(
+      price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
+    position_end_of_last_period = dplyr::recode(
+      position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100)
+
+belief_updates_treatment <- lm(belief_diff_bayes_corrected_flipped ~
+  position_end_of_last_period * price_move_from_last_corrected +
+  age + gender,
+   data = dat_prepared)
+
+coeftest(belief_updates_treatment,
+         vcovCL(belief_updates_treatment,
+           cluster = ~dat_prepared$participant_code))
+```
 
 Testing the 3-way interaction of price_move:position:condition.
 Remove the last term from the model and switch the filter to only include one condition to get the results for the interaction per condition.
@@ -160,8 +183,8 @@ ggplot(dat_prepared,
   labs(x = 'Price Movement and Position',
     y = 'Mean Corrected Belief Update', fill = 'Treatment')
 
-# ggsave('updating_treatments_wrong_excluded_bars.pdf',  device = 'pdf',
-#   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
+ggsave('updating_treatments_wrong_excluded_bars.pdf',  device = 'pdf',
+  width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
 ```
 
 
@@ -229,6 +252,38 @@ lm((((hit_rate_1 - rational_hit_rate_1) +
   data = complete_table) %>%
 summary()
 ```
+
+Let's also check how well the trades predicted the price movements ("correct trades").
+
+```{r correct_trades_by_condition}
+correct_trades <- dat_main_long %>%
+  select(hold, transaction, price_diff_to_next,
+    position, main_condition) %>%
+  filter(transaction != 0) %>%
+  mutate(correct_trade = sign(transaction) == sign(price_diff_to_next),
+    trade_type = case_when(hold == 0 ~ 'Open',
+      abs(transaction) == 2 &
+        position == 'Gain' ~ 'Gain Jump',
+      abs(transaction) == 2 &
+        position == 'Loss' ~ 'Loss Jump',
+      abs(transaction) == 2 & position == 'No Returns' ~ 'No Returns Jump',
+      abs(transaction) == 1 & position == 'Gain' ~ 'Gain Close',
+      abs(transaction) == 1 & position == 'Loss' ~ 'Loss Close',
+      abs(transaction) == 1 & position == 'No Returns' ~ 'No Returns Close',
+      TRUE ~ 'Close')) %>%
+  group_by(trade_type, main_condition) %>%
+  summarize(avg_correct_trades = mean(correct_trade) * 100,
+    n_such_trades = n()) %>%
+  ungroup() %>%
+  filter(!trade_type %in% c('No Returns Jump', 'No Returns Close'))
+
+correct_trades
+
+ggplot(correct_trades, aes(x = trade_type, y = avg_correct_trades, fill = main_condition)) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  coord_cartesian(ylim = c(.45, .6)) +
+  scale_fill_viridis_d()
+  ```
 
 <!-- -------------------------------------------------------------------- -->
 ## Influence on DE
