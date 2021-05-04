@@ -38,20 +38,34 @@ This file contains all analyses reported for phase two of the experiment, where 
 
 ```{r earnings_by_group}
 dat_prepared <- dat_main_long %>%
-  filter(i_round_in_block == max(i_round_in_block, na.rm = TRUE),
-    i_block > 1) %>%
-  dplyr::select(participant_code, hold, cash, price, condition) %>%
-  mutate(earnings = (cash + hold * price) - 2500) %>%
-  group_by(participant_code, condition) %>%
-  summarize(earnings = sum(earnings))
+  filter(i_round_in_block == max(i_round_in_block, na.rm = TRUE)) %>%
+  dplyr::select(participant_code, hold, cash, price, main_condition, i_block) %>%
+  mutate(earnings = (cash + hold * price) - 2500,
+    phase = ifelse(i_block > 1, 2, 1)) %>%
+  group_by(participant_code, phase) %>%
+  summarize(earnings = sum(earnings),
+    main_condition = main_condition[1])
 
+# in second phase
 dat_prepared %>%
-  group_by(condition) %>%
+  group_by(main_condition, phase) %>%
   summarize(avg_earnings = mean(earnings))
 
-summary(lm(earnings ~ condition, data = dat_prepared))
+summary(lm(earnings ~ main_condition, data = filter(dat_prepared, phase == 2)))
 
-qplot(dat_prepared$earnings)
+# in comparison to first phase
+dat_prepared_2 <- dat_prepared %>%
+  pivot_wider(names_from = phase, values_from = earnings) %>%
+  mutate(earnings_increase = `2` - `1`)
+
+dat_prepared_2 %>%
+group_by(main_condition) %>%
+summarize(avg_earnings_increase = mean(earnings_increase))
+
+summary(lm(earnings_increase ~ main_condition, data = dat_prepared_2))
+
+t.test(earnings_increase ~ 1, data = filter(dat_prepared_2, main_condition == 'states_shown'))
+
 ```
 
 ```{r rationality_by_condition}
@@ -128,6 +142,29 @@ dat_prepared <- dat_main_long %>%
 
 belief_updates_treatment <- lm(belief_diff_bayes_corrected_flipped ~
   position_end_of_last_period * price_move_from_last_corrected * condition +
+  age + gender,
+   data = dat_prepared)
+
+coeftest(belief_updates_treatment,
+         vcovCL(belief_updates_treatment,
+           cluster = ~dat_prepared$participant_code))
+```
+
+```{r updating_states_shown}
+dat_prepared <- dat_main_long %>%
+  filter(i_block > 1,
+         position_end_of_last_period %in% c('Gain', 'Loss'),
+         # updating_type != 'Wrong'
+         condition == 'states_shown') %>%
+  dplyr::mutate(price_move_from_last_corrected = dplyr::recode(
+      price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
+    position_end_of_last_period = dplyr::recode(
+      position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100,
+    state_switch = c(NA, diff(state)))
+
+belief_updates_treatment <- lm(belief_diff_bayes_corrected_flipped ~
+  position_end_of_last_period * price_move_from_last_corrected + state_switch +
   age + gender,
    data = dat_prepared)
 
@@ -228,29 +265,38 @@ dat_main_long %>%
 
 
 ```{r hit_rate_by_condition_2}
-complete_table %>%
-  group_by(main_condition) %>%
-  summarize(avg_hit_rate_improvement =
-    mean((hit_rate_3 + hit_rate_4) / 2 -
-      (hit_rate_1 + hit_rate_2) / 2),
-    avg_hit_rate_to_rational_12 =
-    mean((hit_rate_1 - rational_hit_rate_1) +
+dat_prepared <- complete_table %>%
+  mutate(hit_rate_12 = (hit_rate_1 + hit_rate_2) / 2,
+    hit_rate_34 = (hit_rate_3 + hit_rate_4) / 2,
+    hit_rate_improvement = hit_rate_12 - hit_rate_34,
+    hit_rate_to_rational_12 =
+      ((hit_rate_1 - rational_hit_rate_1) +
       (hit_rate_2 - rational_hit_rate_2)) / 2,
-    avg_hit_rate_to_rational_34 =
-    mean((hit_rate_3 - rational_hit_rate_3) +
+    hit_rate_to_rational_34 =
+      ((hit_rate_3 - rational_hit_rate_3) +
       (hit_rate_4 - rational_hit_rate_4)) / 2,
-    avg_hit_rate_to_rational_diff_12_34 =
-    mean((((hit_rate_1 - rational_hit_rate_1) +
-      (hit_rate_2 - rational_hit_rate_2)) / 2) -
-      ((hit_rate_3 - rational_hit_rate_3) +
-      (hit_rate_4 - rational_hit_rate_4)) / 2))
+    hit_rate_to_rational_diff =
+      hit_rate_to_rational_12 - hit_rate_to_rational_34)
 
-lm((((hit_rate_1 - rational_hit_rate_1) +
-      (hit_rate_2 - rational_hit_rate_2)) / 2) -
-      ((hit_rate_3 - rational_hit_rate_3) +
-      (hit_rate_4 - rational_hit_rate_4)) / 2 ~ main_condition,
-  data = complete_table) %>%
+dat_prepared %>%
+  group_by(main_condition) %>%
+  summarize(
+    avg_hit_rate_12 = mean(hit_rate_12),
+    avg_hit_rate_34 = mean(hit_rate_34),
+    avg_hit_rate_improvement = mean(hit_rate_improvement),
+    avg_hit_rate_to_rational_12 = mean(hit_rate_to_rational_12),
+    avg_hit_rate_to_rational_34 = mean(hit_rate_to_rational_34),
+    avg_hit_rate_to_rational_diff_12_34 =
+    mean(avg_hit_rate_to_rational_12 - avg_hit_rate_to_rational_34))
+
+lm(hit_rate_to_rational_diff ~ main_condition,
+  data = dat_prepared) %>%
 summary()
+
+dat_prepared %>%
+  filter(main_condition == 'states_shown') %>%
+  dplyr::select(hit_rate_to_rational_diff) %>%
+  t.test()
 ```
 
 Let's also check how well the trades predicted the price movements ("correct trades").
