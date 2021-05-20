@@ -12,8 +12,7 @@ study_stage <- 'main_study'  # Name the tables should be saved under.
 # e.g. 'test_x', 'pilot_x', 'main_study', 'param_recov'
 
 dat_main_long <- read_delim(file.path(data_path,
-  str_c('all_participants_long_main_', study_stage, '.csv')),
-delim = ';')
+  str_c('all_participants_long_main_', study_stage, '.csv')), delim = ';')
 
 n_subj <- length(unique(dat_main_long$participant_code))
 
@@ -70,14 +69,14 @@ demographics_vars <- c(
   'investment_experience', 'purpose', 'engagement', 'interest',
   'general_comments', 'soep_general', 'soep_drive', 'soep_finance',
   'soep_sport', 'soep_career', 'soep_health', 'soep_trust',
-  'ambiguity_aversion', 'loss_aversion')
+  'ambiguity_aversion', 'loss_aversion', 'wrong_answers')
 
 demographics_list <- list()
 
 
 # Main loop over subjects ##############################################
 all_subj_ids <- unique(dat_main_long$participant_code)
-for (vpn in seq_along(all_files)) {
+for (vpn in seq_along(all_subj_ids)) {
   dat <- filter(dat_main_long, participant_code == all_subj_ids[vpn])
 
 # Demographics, Strategy and SOEP ---------------------------------------
@@ -263,10 +262,10 @@ for (vpn in seq_along(all_files)) {
   de_table$main_condition[vpn] <- as.character(block_dat$condition[1])
 
   de_table$participant_code[vpn] <- as.character(dat$participant_code[1])
-  de_table$session_code[vpn] <- as.character(dat$session.code[1])
+  de_table$session_code[vpn] <- as.character(dat$session_code[1])
 
   # Payoff:
-  outcome_table[vpn, 'participant_payoff'] <- dat$participant.payoff[1]
+  outcome_table[vpn, 'participant_payoff'] <- dat$participant_payoff[1]
 
   # Other variables
   if (study_stage != 'param_recov')

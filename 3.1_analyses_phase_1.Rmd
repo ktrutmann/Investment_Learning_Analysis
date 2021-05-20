@@ -25,11 +25,12 @@ col_set <- c('lightgrey', 'grey', 'darkgrey', 'black')
 # col_set <- c('cyan3', 'skyblue4', 'darkblue', 'black')
 
 # Loading data
-all_complete_tables <- str_subset(dir('Output/Tables/'), 'complete')
+all_complete_tables <- str_subset(list.files(
+  file.path('Output', 'Tables')), 'complete')
 most_recent <- max(str_extract(all_complete_tables, '\\d{4}-\\d{2}-\\d{2}'))
 
-complete_table <- read_delim(str_c('Output//Tables//',
-                                 str_subset(all_complete_tables, most_recent))[1], delim = ';')
+complete_table <- read_delim(file.path('Output', 'Tables',
+  str_subset(all_complete_tables, most_recent)), delim = ';')
 
 dat_main_long <- read_delim(file.path('..', 'Data', 'Clean',
   'all_participants_long_main_main_study.csv'), delim = ';')
@@ -209,8 +210,8 @@ n_shifts <- 2
 filtered_df <- dplyr::filter(dat_main_long, i_block < 2)
 
 jumps <- which(abs(filtered_df$transaction) == 2)
-jumps <- numeric() # To exclude jumps
-target_moves <- c(which(abs(filtered_df$transaction) == 1), jumps) # Change to != 0 when including jumps
+# jumps <- numeric() # To exclude jumps
+target_moves <- c(which(abs(filtered_df$transaction) != 0), jumps) # Change to != 0 when including jumps
 
 # Jumps get a second entry
 moves_after_decision <- tibble(
@@ -224,7 +225,7 @@ moves_after_decision <- tibble(
   filter(trade_ix < nrow(filtered_df))
 
 full_shift_df <- filtered_df %>%
-  dplyr::select(hold, transaction, price) %>%
+  dplyr::select(hold, transaction, price, i_block) %>%
   dplyr::slice(moves_after_decision$trade_ix) %>%
   bind_cols(moves_after_decision) %>%
   group_by(trade_id) %>%
@@ -344,7 +345,7 @@ Let's now check how many times participants were correct in either opening or cl
 ```{r correct_trades}
 dat_main_long %>%
   select(hold, transaction, price_diff_to_next,
-    position) %>%
+    position, i_block) %>%
   filter(i_block < 2, transaction != 0) %>%
   mutate(correct_trade = sign(transaction) == sign(price_diff_to_next),
     trade_type = case_when(hold == 0 ~ 'Open',
@@ -660,14 +661,11 @@ dat_prepared <- dat_main_long %>%
          # !excluded.x,
          # updating_type != 'Wrong'
          ) %>%
-  transmute(price_move_from_last_corrected = dplyr::recode(
+  mutate(price_move_from_last_corrected = dplyr::recode(
       price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
     position_end_of_last_period = dplyr::recode(
       position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
-    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100,
-    participant_code = participant_code,
-    age = age,
-    gender = gender)
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100)
 
 belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
   position_end_of_last_period * price_move_from_last_corrected + age + gender,

@@ -18,14 +18,15 @@ library(car)
 library(tidyverse)
 
 # Loading data
-all_complete_tables <- str_subset(dir('Output/Tables/'), 'complete')
+all_complete_tables <- str_subset(list.files(
+  file.path('Output', 'Tables')), 'complete')
 most_recent <- max(str_extract(all_complete_tables, '\\d{4}-\\d{2}-\\d{2}'))
 
-complete_table <- read_delim(str_c('Output//Tables//',
-                                 str_subset(all_complete_tables, most_recent))[1], delim = ';')
+complete_table <- read_delim(file.path('Output', 'Tables',
+  str_subset(all_complete_tables, most_recent)), delim = ';')
 
-dat_main_long <- read_delim('..//Data//Clean//all_participants_long_main_main_study.csv',   
-                            delim = ';')
+dat_main_long <- read_delim(file.path('..', 'Data', 'Clean',
+  'all_participants_long_main_main_study.csv'), delim = ';')
 
 col_set <- c('lightgrey', 'grey', 'darkgrey', 'black')
 ```
@@ -243,7 +244,7 @@ complete_table %>%
   summarise(avg_diff_plr = mean(plr_diff_12_34),
     avg_diff_pgr = mean(pgr_diff_12_34))
 
-  complete_table %>%
+complete_table %>%
   group_by(main_condition) %>%
   summarise(avg_plr = mean(plr_34),
     avg_pgr = mean(pgr_34))
@@ -327,7 +328,7 @@ correct_trades
 
 ggplot(correct_trades, aes(x = trade_type, y = avg_correct_trades, fill = main_condition)) +
   geom_bar(stat = 'identity', position = 'dodge') +
-  coord_cartesian(ylim = c(.45, .6)) +
+  coord_cartesian(ylim = c(45, 60)) +
   scale_fill_viridis_d()
   ```
 

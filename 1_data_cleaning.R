@@ -35,7 +35,8 @@ other_dat <- all_dat %>%
     -contains(c('config', 'Tutorial_', 'group',
       'Demographics.1.player.payoff', 'Demographics.1.player.round_number',
       'Demographics.1.subsession.round_number',
-      'SOEP5.1.subsession.round_number')))
+      'SOEP5.1.subsession.round_number')) |
+    contains(c('.30.player.wrong_answers')))
 
 other_dat <- rename(other_dat,
   participant_code = participant.code,
