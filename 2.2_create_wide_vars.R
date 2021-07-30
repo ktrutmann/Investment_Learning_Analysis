@@ -12,7 +12,8 @@ study_stage <- 'main_study'  # Name the tables should be saved under.
 # e.g. 'test_x', 'pilot_x', 'main_study', 'param_recov'
 
 dat_main_long <- read_delim(file.path(data_path,
-  str_c('all_participants_long_main_', study_stage, '.csv')), delim = ';')
+  str_c('all_participants_long_main_', study_stage, '.csv')), delim = ';',
+  guess_max = 5000)
 
 n_subj <- length(unique(dat_main_long$participant_code))
 

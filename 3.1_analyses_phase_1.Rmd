@@ -33,7 +33,7 @@ complete_table <- read_delim(file.path('Output', 'Tables',
   str_subset(all_complete_tables, most_recent)), delim = ';')
 
 dat_main_long <- read_delim(file.path('..', 'Data', 'Clean',
-  'all_participants_long_main_main_study.csv'), delim = ';')
+  'all_participants_long_main_main_study.csv'), delim = ';', guess_max = 5000)
 ```
 
 The following file presents the analyses as they are reported in the main paper in the order in which they are reported in the paper. The chunk names are also mentioned in the .tex files beside where the results are reported.
@@ -646,7 +646,7 @@ ggplot(dat_prepared,
   # ylim(0, .3) +
   labs(x = 'Position and Price Move',
     y = 'Average Corrected Belief Update') +
-  theme(legend.position = 'none')
+  theme(legend.position = 'none', text = element_text(size = 16))
 
 ggsave('updating_baseline_wrong_included_bars.pdf',  device = 'pdf',
   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
@@ -665,14 +665,19 @@ dat_prepared <- dat_main_long %>%
       price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
     position_end_of_last_period = dplyr::recode(
       position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
-    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100)
+    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100) %>%
+  left_join(dplyr::select(complete_table, participant_code, ravens_matrices_score),
+    by = 'participant_code')
 
 belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
   position_end_of_last_period * price_move_from_last_corrected + age + gender,
+  # position_end_of_last_period : price_move_from_last_corrected : age,
    data = dat_prepared)
 coeftest(belief_updates_baseline,
          vcovCL(belief_updates_baseline,
            cluster = ~dat_prepared$participant_code))
+
+summary(belief_updates_baseline)
 ```
 _(robust to excluding inattentives)_
 
@@ -860,7 +865,19 @@ cor.test(complete_table$age, complete_table$de_12)
 t.test(de_12 ~ gender, data = complete_table)
 ```
 ```{r strategy_on_payoff}
-summary(lm(participant_payoff ~ .,
-  data = dplyr::select(complete_table,
-    participant_payoff, contains('strategy_'))))
+dat_prepared <- dplyr::select(complete_table, de_12, contains('strategy_'))
+all_models <- list()
+
+for (i in seq_len(ncol(dat_prepared) - 1)) {
+  this_model <- cor.test(dat_prepared$de_12, pluck(dat_prepared, i + 1),
+  method = 'spearman')
+
+  all_models[[i]] <- c(names(dat_prepared)[i + 1], this_model$estimate, this_model$p.value)
+  names(all_models[[i]]) <- c('variable', 'rho', 'p_value')
+}
+
+bind_rows(all_models) %>%
+  mutate(across(rho:p_value, as.numeric),
+  rho = round(rho, 2))
+
 ```

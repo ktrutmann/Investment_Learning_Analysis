@@ -6,8 +6,7 @@ study_stage <- 'main_study'  # With what part of the study are we dealing here?
 raw_dat_path <- file.path('..', 'Data', 'Raw', 'Main')
 clean_dat_path <- file.path('..', 'Data', 'Clean')
 
-all_dat <- vroom(file.path(raw_dat_path, list.files(raw_dat_path)))
-
+all_dat <- vroom(file.path(raw_dat_path, list.files(raw_dat_path)), quote = '\"', escape_double = TRUE)
 
 # Reshaping ---------------------------------------------------------------
 dat_main <- all_dat %>%
@@ -54,7 +53,6 @@ dat_main_long <- left_join(inv_task_dat_long, other_dat,
 # Save Data ---------------------------------------------------------------
 
 # Re-save that dataframe with the additional variables
-# TODO: general comments are saved incorrectly! Fix that!
 write_delim(dat_main_long, file.path(clean_dat_path,
     str_c('all_participants_long_main_', study_stage, '.csv')),
             delim = ';')
