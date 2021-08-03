@@ -321,6 +321,12 @@ if (study_stage != 'param_recov') {
     filter(!never_held) %>%
     summarise(never_held_all_blocks = !all(!never_held))
 
+  # Excluding those who traded fewer than 5 times:
+  traded_to_little <- dat_main_long %>%
+    group_by(participant_code) %>%
+    summarise(fewer_than_5_trades = sum(na.omit(transaction) != 0) < 5)
+  # Never happened, so no further action is needed.
+
   # Join the exclusion rows together and expand to the long dataframe
   temp_excluded <- left_join(never_held_at_all,
     dplyr::select(complete_table, participant_code, excluded),
