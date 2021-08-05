@@ -36,6 +36,7 @@ dat_main_long <- read_delim(file.path('..', 'Data', 'Clean',
   'all_participants_long_main_main_study.csv'), delim = ';', guess_max = 5000)
 ```
 
+
 The following file presents the analyses as they are reported in the main paper in the order in which they are reported in the paper. The chunk names are also mentioned in the .tex files beside where the results are reported.
 This file contains all analyses before and including the reporting of phase one of the experiment. For phase two or the appendix see the other files.
 
@@ -470,7 +471,8 @@ max(dat_main_long$i_round_in_block, na.rm = TRUE)
 ### Predictiveness of Beliefs
 
 Ordered logistic regression to determine how predictive beliefs are for investment decisions.
-Includes the residuals of beliefs predicted by the bayesian probability.
+Includes the residuals of beliefs predicted by the Bayesian probability.
+Further you can add or remove the control variables for additional robustness checks.
 ```{r olog_beliefs}
 # Order the levels of hold_lead
 dat_prepared <- dat_main_long %>%
@@ -480,9 +482,8 @@ dat_prepared <- dat_main_long %>%
       bayes_prob_up = bayes_prob_up * 100,
       belief_residuals = lm(belief ~ bayes_prob_up)$residuals)
 
-olog_beliefs <- clmm(hold_lead ~ belief + age +
-  gender + (1 | participant_code),
-  data = dat_prepared)
+olog_beliefs <- clmm(hold_lead ~ belief_residuals + bayes_prob_up + age + gender +
+  hold + i_round_in_block + (1 | participant_code), data = dat_prepared)
 summary(olog_beliefs)
 coeftest(olog_beliefs)
 ```
