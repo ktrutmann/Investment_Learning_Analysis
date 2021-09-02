@@ -61,6 +61,17 @@ knitr::kable(round(prop.table(table(complete_table$investment_experience)) * 100
 
 round(sum(complete_table$is_student == 'Ja') * 100, 2)
 
+sink(file.path('Output', 'Tables', 'demographics.txt'))
+complete_table %>%
+  mutate(gender = gender == 'Weiblich',
+    is_student = is_student == 'Ja') %>%
+  # group_by(main_condition) %>%
+  summarize(across(.cols = all_of(c('age', 'gender', 'investment_experience',
+    'is_student', 'wrong_answers', 'ravens_matrices_score', 'risk_soep_general')),
+    .fns = list(mean = mean, sd = sd))) %>%
+  mutate(across(.cols = where(is.numeric), .fns = round, 2)) %>%
+  knitr::kable(format = 'latex')
+sink()
 ```
 
 Here we show the actual payoff of the participants as well as the average payoff a risk neutral Bayesian agent would have earned. The exchange rate from points to CHF was __.06__. Each "win" in the probability matching task was worth 1 point.
