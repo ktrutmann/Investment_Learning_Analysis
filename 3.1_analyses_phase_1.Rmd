@@ -644,21 +644,24 @@ dat_prepared_2 <- dat_prepared %>%
   add_column(tibble(position_end_of_last_period = 'Not Invested',
     price_move_from_last_corrected = ''))
 
-dat_prepared <- full_join(dat_prepared_1, dat_prepared_2)
+dat_prepared <- full_join(dat_prepared_1, dat_prepared_2) %>%
+  add_column(width = c(1, 1, 1, 1, .5) * .95)
 
+
+# TODO: (1) Beautify!
 ggplot(dat_prepared,
-       aes(x = position_end_of_last_period, y = mean_update,
-           fill = price_move_from_last_corrected)) +
-  facet_grid(cols = vars(price_move_from_last_corrected),
-    scale = 'free_x', space = 'free_x') +
-  geom_bar(stat = 'identity') +
+       aes(x =  fct_relevel(position_end_of_last_period,
+          'Not Invested', 'Gain', 'Loss'),
+          y = mean_update, fill = price_move_from_last_corrected,
+          width = width)) +
+  geom_bar(stat = 'identity', position = position_dodge()) +
   geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
-                    width = .1, color = tail(col_set, 1)) +
-  scale_fill_manual(name = '', values = c(col_set[1:3])) +
-  # ylim(0, .3) +
-  labs(x = 'Position and Price Move',
+                    width = .1, color = tail(col_set, 1),
+                    position = position_dodge(1)) +
+  scale_fill_manual(name = 'Price Move', values = c(col_set[1:3])) +
+  labs(x = 'Position',
     y = 'Average Corrected Belief Update') +
-  theme(legend.position = 'none', text = element_text(size = 16))
+  theme(text = element_text(size = 16))
 
 ggsave('updating_baseline_wrong_included_bars.pdf',  device = 'pdf',
   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
