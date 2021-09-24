@@ -36,9 +36,10 @@ dat_main_long <- read_delim(file.path('..', 'Data', 'Clean',
   'all_participants_long_main_main_study.csv'), delim = ';', guess_max = 5000)
 ```
 
-
-The following file presents the analyses as they are reported in the main paper in the order in which they are reported in the paper. The chunk names are also mentioned in the .tex files beside where the results are reported.
-This file contains all analyses before and including the reporting of phase one of the experiment. For phase two or the appendix see the other files.
+The following file presents the analyses as they are reported in the main paper and roughtly in the order in which they are reported in the paper.
+The chunk names are also mentioned in the .tex files beside where the results are reported.
+This file contains all analyses before and including the reporting of phase one of the experiment.
+For phase two or the appendix see the other files.
 
 
 <!-- #################################################################### -->
@@ -76,19 +77,16 @@ sink()
 
 Here we show the actual payoff of the participants as well as the average payoff a risk neutral Bayesian agent would have earned. The exchange rate from points to CHF was __.06__. Each "win" in the probability matching task was worth 1 point.
 ```{r earnings}
-earnings <- complete_table %>%
-  summarise(avg_earnings = mean(participant_payoff * .06 + 10))
-
-# FIXME: Pretty sure there's something incorrect here!
-dat_main_long  %>%
+dat_main_long %>%
+  filter(i_block < 2) %>%
   group_by(participant_code) %>%
-  summarize(rational_earnings = sum(price_diff_from_last * rational_hold +
-    rational_lottery_earnings, na.rm = TRUE)) %>%
-  summarize(rational_earnings = mean(rational_earnings) * .06 + 15 + 10)
-
-  round(2) %>%
-  knitr::kable(col.names = c('Average Participant Earnings',
-    'Average Earnings Rational Benchmark'))
+  summarise(avg_earnings = mean((final_cash - 2500) * .06, na.rm = TRUE),
+    derp = sum(price_diff_from_last * rational_hold,
+     na.rm = TRUE) / 2 * .06) %>%
+  summarise(avg_earning = mean(avg_earnings),
+    range_earnings = sd(avg_earnings),
+    rational_earnings = mean(derp),
+    range_rational_earnings = sd(derp))
 ```
 
 ```{r engagement_distribution}
@@ -355,7 +353,7 @@ Let's now check how many times participants were correct in either opening or cl
 "Correct" here means a price increase (decrease) after buying (shorting) and vice versa.
 
 ```{r correct_trades}
-dat_main_long %>%
+correct_trades <- dat_main_long %>%
   select(hold, transaction, price_diff_to_next,
     position, i_block) %>%
   filter(i_block < 2, transaction != 0) %>%
@@ -369,13 +367,23 @@ dat_main_long %>%
       abs(transaction) == 1 & position == 'Gain' ~ 'Gain Close',
       abs(transaction) == 1 & position == 'Loss' ~ 'Loss Close',
       abs(transaction) == 1 & position == 'No Returns' ~ 'No Returns Close',
-      TRUE ~ 'Close')) %>%
+      TRUE ~ 'Close'))
+
+correct_trades %>%
   group_by(trade_type) %>%
   summarize(avg_correct_trades = mean(correct_trade),
     n_such_trades = n()) %>%
   ggplot(aes(x = trade_type, y = avg_correct_trades)) +
     geom_bar(stat = 'identity') +
     coord_cartesian(ylim = c(.45, .55))
+```
+
+```{r correct_trades_test}
+with(correct_trades,
+  binom.test(x = sum(correct_trade[trade_type == 'Gain Close']),
+    n = length(correct_trade),
+    p = sum(correct_trade[trade_type == 'Loss Close']) / length(correct_trade),
+    alternative = 'two.sided'))
 ```
 
 Now we look at their beliefs at the trades.
@@ -385,8 +393,8 @@ dat_main_long %>%
   mutate(transaction_type = case_when(
     hold == 0 & transaction == 1 ~ 'Long',
     hold == 0 & transaction == -1 ~ 'Short',
-    hold == 1 & position == 'Gain' ~ 'Liq. Long Gain', 
-    hold == 1 & position == 'Loss' ~ 'Liq. Long Loss', 
+    hold == 1 & position == 'Gain' ~ 'Liq. Long Gain',
+    hold == 1 & position == 'Loss' ~ 'Liq. Long Loss',
     hold == -1 & position == 'Gain' ~ 'Liq. Short Gain',
     hold == -1 & position == 'Loss' ~ 'Liq. Short Loss')) %>%
   filter(!is.na(transaction_type)) %>%
@@ -647,6 +655,7 @@ dat_prepared_2 <- dat_prepared %>%
 dat_prepared <- full_join(dat_prepared_1, dat_prepared_2) %>%
   add_column(width = c(1, 1, 1, 1, .5) * .95)
 
+this_col_set <- c('lightgrey', 'darkgrey', '#666666')
 
 # TODO: (1) Beautify!
 ggplot(dat_prepared,
@@ -656,9 +665,10 @@ ggplot(dat_prepared,
           width = width)) +
   geom_bar(stat = 'identity', position = position_dodge()) +
   geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
-                    width = .1, color = tail(col_set, 1),
+                    width = .1, color = 'black',
                     position = position_dodge(1)) +
-  scale_fill_manual(name = 'Price Move', values = c(col_set[1:3])) +
+  scale_fill_manual(name = 'Price Move', values = this_col_set[1:3],
+    breaks = c('Favorable', 'Unfavorable')) +
   labs(x = 'Position',
     y = 'Average Corrected Belief Update') +
   theme(text = element_text(size = 16))
@@ -745,6 +755,18 @@ dat_prepared <- dat_main_long %>%
 m1 <- lm(belief_diff_bayes_corrected_flipped ~ position_end_of_last_period,
   data = dat_prepared)
 coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
+
+
+dat_prepared <- dat_main_long %>%
+  filter(i_block < 2,
+    position_end_of_last_period == 'Loss',
+    price_move_from_last_corrected %in% c('Unfavorable', 'Favorable')
+    # updating_type != 'Wrong'
+    )
+
+m2 <- lm(belief_diff_bayes_corrected_flipped ~ price_move_from_last_corrected,
+  data = dat_prepared)
+coeftest(m2, vcovCL(m2, cluster = ~dat_prepared$participant_code))
 ```
 
 
@@ -755,7 +777,7 @@ coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
 dat_main_long %>%
   dplyr::filter(abs(transaction) == 1,
     position != 'No Returns',
-    i_block < 2) %>%                             
+    i_block < 2) %>%
   group_by(transaction, position) %>%
   summarize(avg_belief = mean(belief / 100),
     sd_belief = sd(belief / 100),
