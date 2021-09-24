@@ -168,13 +168,13 @@ dat_prepared <- summarize(complete_table,
     (rational_n_holds_1 + rational_n_holds_2),
   rational_all_avg_short_length = (rational_avg_short_length_1 *
     rational_n_shorts_1 + rational_avg_short_length_2 * rational_n_shorts_2) /
-    (rational_n_shorts_1 + rational_n_shorts_2)) %>%
-  mutate(all_avg_short_length = replace_na(all_avg_short_length, 0),
-  # Excluding those who held almost the whole time:
-    all_avg_hold_length = ifelse(
-    all_avg_hold_length > 35, NA, all_avg_hold_length),
-    all_avg_short_length = ifelse(
-      all_avg_short_length > 35, NA, all_avg_short_length))
+    (rational_n_shorts_1 + rational_n_shorts_2)) # %>%
+  # mutate(all_avg_short_length = replace_na(all_avg_short_length, 0),
+  # # Excluding those who held almost the whole time:
+  #   all_avg_hold_length = ifelse(
+  #   all_avg_hold_length > 35, NA, all_avg_hold_length),
+  #   all_avg_short_length = ifelse(
+  #     all_avg_short_length > 35, NA, all_avg_short_length))
 
 summarize(dat_prepared,
   avg_hold_length = mean(all_avg_hold_length, na.rm = TRUE),
