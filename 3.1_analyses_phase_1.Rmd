@@ -744,6 +744,7 @@ dat_main_long %>%
     sd = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE))
 ```
 
+Change "Favorable" to "Unfavorable" in the filter below to see each context seperately.
 ```{r updating_diff_test}
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
@@ -756,6 +757,10 @@ m1 <- lm(belief_diff_bayes_corrected_flipped ~ position_end_of_last_period,
   data = dat_prepared)
 coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
 
+dat_prepared %>%
+  group_by(position_end_of_last_period) %>%
+  summarize(mean = mean(belief_diff_bayes_corrected_flipped),
+    sd = sd(belief_diff_bayes_corrected_flipped))
 
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
