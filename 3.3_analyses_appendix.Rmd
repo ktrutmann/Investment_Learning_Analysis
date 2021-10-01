@@ -174,7 +174,7 @@ dat_prepared <- dat_main_long %>%
          position_end_of_last_period %in% c('Gain', 'Loss'),
          dplyr::lag(hold) == 1,
     ) %>%
-  transmute(price_move_from_last_corrected = dplyr::recode(
+  mutate(price_move_from_last_corrected = dplyr::recode(
       price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
     position_end_of_last_period = dplyr::recode(
       position_end_of_last_period, 'Loss' = -.5, 'Gain' = .5),
@@ -182,7 +182,7 @@ dat_prepared <- dat_main_long %>%
     participant_code = participant_code)
 
 belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
-  position_end_of_last_period * price_move_from_last_corrected,
+  position_end_of_last_period * price_move_from_last_corrected + age + gender,
    data = dat_prepared)
 
 coeftest(belief_updates_baseline,
@@ -241,7 +241,7 @@ ggplot(aes(x = Position, y = Value)) +
 
 DE of the first phase corrected for the benchmark. There is no significant difference between groups in the first phase as all participants received the same treatment.
 ```{r de_conditions_baseline}
-summary(lm(de_12 + .78 ~ main_condition, data = complete_table))
+summary(lm(de_12 + .78 ~ main_condition + age + gender, data = complete_table))
 ```
 
 Finding out whether participants adhered to the shown probabilities in the states_shown condition.
