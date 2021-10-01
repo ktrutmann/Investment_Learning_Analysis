@@ -162,7 +162,7 @@ dat_prepared <- dat_main_long %>%
     position_end_of_last_period = dplyr::recode(
       position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
     belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100,
-    state_switch = c(NA, diff(state)))
+    state_switch = abs(c(NA, diff(state))))
 
 belief_updates_treatment <- lm(belief_diff_bayes_corrected_flipped ~
   position_end_of_last_period * price_move_from_last_corrected + state_switch +
