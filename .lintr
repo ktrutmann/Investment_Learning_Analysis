@@ -1,2 +1,0 @@
-linters: with_defaults(line_length_linter(120), single_quotes_linter = NULL, no_tab_linter = NULL)
-exclusions: list("helper_functions.R" = 1)
