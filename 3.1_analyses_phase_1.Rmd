@@ -683,7 +683,7 @@ Checking whether there is an interaction in the updating during the first two bl
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
          position_end_of_last_period %in% c('Gain', 'Loss'),
-         # !excluded.x,
+         # !excluded,
          # updating_type != 'Wrong'
          ) %>%
   mutate(price_move_from_last_corrected = dplyr::recode(

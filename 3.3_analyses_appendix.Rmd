@@ -159,7 +159,7 @@ ggplot(dat_prepared,
   geom_line(size = 1) +
   geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = .05) +
   scale_color_manual(values = c(col_set[1], col_set[3])) +
-  labs(x = 'N Same Moves', y = 'Mean Update', color = 'Price Move',
+  labs(x = 'N Same Moves', y = 'Mean Belief', color = 'Price Move',
     group = 'Price Move')
 
 # ggsave('beliefs_by_run_length.pdf', device = 'pdf',
@@ -344,7 +344,7 @@ dat_prepared <- dat_main_long %>%
          condition == 'states_shown',
          i_block > 1) %>%
   mutate(belief_diff_bayes_corrected =
-    belief_diff_bayes_corrected / 100)
+    belief_diff_from_last / 100)
 
 dat_prepared_1 <- dat_prepared %>%
 filter(position_end_of_last_period != 'Not Invested') %>%
@@ -364,18 +364,24 @@ dat_prepared_2 <- dat_prepared %>%
   add_column(tibble(position_end_of_last_period = 'Not Invested',
     price_move_from_last_corrected = ''))
 
-dat_prepared <- full_join(dat_prepared_1, dat_prepared_2)
+dat_prepared <- full_join(dat_prepared_1, dat_prepared_2) %>%
+  add_column(width = c(1, 1, 1, 1, .5) * .95)
 
 ggplot(dat_prepared,
-       aes(x = position_end_of_last_period, y = mean_update)) +
-  facet_grid(cols = vars(price_move_from_last_corrected),
-    scale = 'free_x', space = 'free_x') +
-  geom_bar(stat = 'identity', position = 'dodge') +
+       aes(x =  fct_relevel(position_end_of_last_period,
+          'Not Invested', 'Gain', 'Loss'),
+          y = mean_update, fill = price_move_from_last_corrected,
+          width = width)) +
+  geom_bar(stat = 'identity', position = position_dodge()) +
   geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
-                position = position_dodge(.9), width = .1) +
-  labs(x = 'Price Movement and Position',
-    y = 'Mean Corrected Belief Update', fill = 'Treatment')
+                    width = .1, color = 'black',
+                    position = position_dodge(1)) +
+  scale_fill_manual(name = 'Price Move', values = this_col_set[1:3],
+    breaks = c('Favorable', 'Unfavorable')) +
+  labs(x = 'Position',
+    y = 'Average Corrected Belief Update') +
+  theme(text = element_text(size = 16))
 
-# ggsave('updating_full_info_bars.pdf',  device = 'pdf',
-  # width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
+ggsave('updating_full_info_bars.pdf',  device = 'pdf',
+  width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
 ```
