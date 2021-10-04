@@ -2,3 +2,5 @@
 .Rhistory
 .RData
 *.sublime-workspace
+.lintr
+*.sublime-project
