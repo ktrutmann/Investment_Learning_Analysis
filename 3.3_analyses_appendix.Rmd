@@ -102,7 +102,6 @@ ggplot(these_sds, aes(x = sd_per_participant)) +
 ```
 
 
-
 <!-- -------------------------------------------------------------------- -->
 ### Belief Formation
 Frequency of update types compared to Bayesian updating.
@@ -132,7 +131,7 @@ ggplot(dat_prepared,
   geom_line(size = 1) +
   geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = .05) +
   scale_color_manual(values = c(col_set[1], col_set[3])) +
-  labs(x = 'N Same Moves', y = 'Mean Update', color = 'Price Move',
+  labs(x = 'No. Same Moves', y = 'Mean Update', color = 'Price Move',
     group = 'Price Move')
 
 # ggsave('updating_magnitude_by_run_length.pdf', device = 'pdf',
@@ -160,7 +159,7 @@ ggplot(dat_prepared,
   geom_line(size = 1) +
   geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = .05) +
   scale_color_manual(values = c(col_set[1], col_set[3])) +
-  labs(x = 'N Same Moves', y = 'Mean Belief', color = 'Price Move',
+  labs(x = 'No. Same Moves', y = 'Mean Belief', color = 'Price Move',
     group = 'Price Move')
 
 # ggsave('beliefs_by_run_length.pdf', device = 'pdf',
