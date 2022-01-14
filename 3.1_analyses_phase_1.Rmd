@@ -202,6 +202,8 @@ this_tab <- dat_main_long %>%
 
   knitr::kable(this_tab)
 
+  this_tab / 14200
+
   chisq.test(this_tab)
 
 ```
@@ -446,11 +448,11 @@ ggplot(aes(x = shift, y = avg_hold, color = original_switch_type,
   group = original_switch_type)) +
   geom_line(size = 1) +
   geom_vline(xintercept = 0, linetype = 'dashed') +
-  geom_text(x = 2, y = .255, label = 'Changing from bad to good state',
+  geom_text(x = 2, y = .255, label = 'Changing from Bad to Good State',
     color = '#202020', size = 6) +
-  geom_text(x = 2, y = .08, label = 'Changing from good to bad state',
+  geom_text(x = 2, y = .08, label = 'Changing from Good to Bad State',
     color = '#202020', size = 6) +
-  labs(x = 'Rounds, centered around change in asset state',
+  labs(x = 'Rounds (Centered around Change in Asset State)',
     y = 'Average Investment',
     group = 'Switch Type', color = 'Switch Type') +
   scale_color_manual(values = c(col_set[1], col_set[3])) +
@@ -657,7 +659,6 @@ dat_prepared <- full_join(dat_prepared_1, dat_prepared_2) %>%
 
 this_col_set <- c('lightgrey', 'darkgrey', '#666666')
 
-# TODO: (1) Beautify!
 ggplot(dat_prepared,
        aes(x =  fct_relevel(position_end_of_last_period,
           'Not Invested', 'Gain', 'Loss'),

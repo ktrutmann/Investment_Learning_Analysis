@@ -30,6 +30,7 @@ dat_main_long <- read_delim('..//Data//Clean//all_participants_long_main_main_st
 
 # Color secifications for the plots
 col_set <- c('lightgrey', 'grey', 'darkgrey', 'black')
+this_col_set <- c('lightgrey', 'darkgrey', '#555555', 'black')
 ```
 
 <!-- #################################################################### -->
@@ -172,7 +173,7 @@ Change the filter `lag(hold) == 1` between `1` and `-1` to either only include l
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
          position_end_of_last_period %in% c('Gain', 'Loss'),
-         dplyr::lag(hold) == 1,
+         dplyr::lag(hold) == -1,
     ) %>%
   mutate(price_move_from_last_corrected = dplyr::recode(
       price_move_from_last_corrected, 'Unfavorable' = -.5, 'Favorable' = .5),
@@ -379,7 +380,7 @@ ggplot(dat_prepared,
   scale_fill_manual(name = 'Price Move', values = this_col_set[1:3],
     breaks = c('Favorable', 'Unfavorable')) +
   labs(x = 'Position',
-    y = 'Average Corrected Belief Update') +
+    y = 'Average Belief Update') +
   theme(text = element_text(size = 16))
 
 ggsave('updating_full_info_bars.pdf',  device = 'pdf',
