@@ -2,8 +2,8 @@ library(tidyverse)
 
 # Loading Data: ################################################################
 
-study_stage <- 'main_study'  # With what part of the study are we dealing here?
-clean_dat_path <- file.path('..', 'Data', 'Clean')
+study_stage <- 'param_recov'  # With what part of the study are we dealing here?
+clean_dat_path <- file.path('..', 'data', 'clean')
 
 dat_main_long <- read_delim(file.path(clean_dat_path,
   str_c('all_participants_long_main_', study_stage, '.csv')),
@@ -66,7 +66,7 @@ for (i in seq_len(nrow(dat_main_long))) {
   this_block_i <- dat_main_long$i_block[i]
 
   if (i %% as.integer(nrow(dat_main_long) / 20) == 0) {
-    cat(str_c('\nModel beliefs: ',
+    cat(str_c('\rModel beliefs: ',
       progress, '%'))
     progress <- progress + 5
   }
@@ -96,7 +96,9 @@ dat_main_long <- dat_main_long %>%
    price_move_from_last = as.factor(c(NA, if_else(diff(price) > 0,
     'Up', 'Down'))),
    price_move_from_last_corrected = as.factor(
-    case_when(hold == -1 & price_diff_from_last < 0 ~ 'Favorable',
+    case_when(
+      i_round_in_block == 0 ~ NA_character_,
+      hold == -1 & price_diff_from_last < 0 ~ 'Favorable',
       hold == -1 & price_diff_from_last > 0 ~ 'Unfavorable',
       hold != -1 & price_diff_from_last < 0 ~ 'Unfavorable',
       hold != -1 & price_diff_from_last > 0 ~ 'Favorable')),
@@ -110,6 +112,11 @@ dat_main_long <- dat_main_long %>%
       position != 'Not Invested' & abs(transaction) == 1 ~ 'Not Invested',
       abs(transaction) == 2 ~ 'No Returns',
       TRUE ~ position))),
+   updated_from = case_when(
+      is.na(position_end_of_last_period) |
+        is.na(price_move_from_last_corrected) ~ NA_character_,
+      str_detect(position_end_of_last_period, 'No') ~ 'Not Invested',
+      TRUE ~paste(price_move_from_last_corrected, position_end_of_last_period)),
    cumulative_moves_while_invested = count_n_moves(
     price_move_from_last_corrected, hold),
    belief_diff_flipped = if_else(price_diff_from_last > 0,
@@ -122,6 +129,8 @@ dat_main_long <- dat_main_long %>%
    belief_diff_rl_corrected_flipped = if_else(
     price_diff_from_last > 0,
     belief_diff_rl_corrected, - belief_diff_rl_corrected),
+   implied_alpha = (belief - lag(belief)) /
+      (c(0, if_else(diff(price) > 0, 100, 0)) - pmax(pmin(lag(belief), 99.99), .01))
   )
 
   dat_main_long$belief_bayes_residual <- NA
@@ -157,12 +166,18 @@ dat_main_long$rational_lottery_earnings <-
 # Rational returns
 dat_main_long$rational_returns <- 0
 progress <- 5
+cat('\n')
 for (i in seq_len(nrow(dat_main_long))) {
+ if (i %% as.integer(nrow(dat_main_long) / 20) == 0) {
+    cat(str_c('\rRational Returns: ',
+      progress, '%'))
+    progress <- progress + 5
+  }
   if (is.na(dat_main_long$i_round_in_block[i]) |
     dat_main_long$i_round_in_block[i] == 0 |
     is.na(dat_main_long$rational_hold[i]) |
     dat_main_long$rational_hold[i] == 0)
-    next
+      next
 
   dat_main_long$rational_returns[i] <-
     dat_main_long$price_diff_from_last[i] * dat_main_long$rational_hold[i]
@@ -172,12 +187,6 @@ for (i in seq_len(nrow(dat_main_long))) {
 
     dat_main_long$rational_returns[i] <- dat_main_long$rational_returns[i] +
       dat_main_long$rational_returns[i - 1]
-  }
-      
-  if (i %% as.integer(nrow(dat_main_long) / 20) == 0) {
-    cat(str_c('\nRational returns: ',
-      progress, '%'))
-    progress <- progress + 5
   }
 }
 

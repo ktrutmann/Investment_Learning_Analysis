@@ -2,11 +2,13 @@ library(vroom)
 library(tidyverse)
 
 
-study_stage <- 'main_study'  # With what part of the study are we dealing here?
-raw_dat_path <- file.path('..', 'Data', 'Raw', 'Main')
-clean_dat_path <- file.path('..', 'Data', 'Clean')
+study_stage <- 'param_recovery'  # With what part of the study are we dealing here?
+raw_dat_path <- file.path('..', 'data', 'Raw', 'param_recov')
+clean_dat_path <- file.path('..', 'data', 'clean')
 
-all_dat <- vroom(file.path(raw_dat_path, list.files(raw_dat_path)), quote = '\"', escape_double = TRUE)
+all_dat <- vroom(file.path(raw_dat_path,
+  str_subset(list.files(raw_dat_path), '.csv')),
+  quote = '\"', escape_double = TRUE)
 
 # Reshaping ---------------------------------------------------------------
 dat_main <- all_dat %>%
