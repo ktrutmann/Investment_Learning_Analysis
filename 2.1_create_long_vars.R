@@ -7,7 +7,7 @@ clean_dat_path <- file.path('..', 'data', 'clean')
 
 dat_main_long <- read_delim(file.path(clean_dat_path,
   str_c('all_participants_long_main_', study_stage, '.csv')),
-delim = ';', guess_max = 5000)
+delim = ';', guess_max = 10000)
 
 # Constants ###############################################################
 rl_alpha <- .3  # Learning rate for a hypothetical RL agent
