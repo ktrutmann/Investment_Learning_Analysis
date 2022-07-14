@@ -6,9 +6,9 @@ set.seed(9876)
 
 # Constants ############################################################
 n_blocks <- 4
-data_path <- file.path('..', 'Data', 'Clean')
+data_path <- file.path('..', 'data', 'clean')
 
-study_stage <- 'main_study'  # Name the tables should be saved under.
+study_stage <- 'study'  # Name the tables should be saved under.
 # e.g. 'test_x', 'pilot_x', 'main_study', 'param_recov'
 
 dat_main_long <- read_delim(file.path(data_path,
@@ -367,7 +367,7 @@ if (study_stage != 'param_recov') {
               delim = ';')
 } # End param_recov condition
 
-write_delim(dat_main_long, file.path('..', 'Data', 'Clean',
+write_delim(dat_main_long, file.path('..', 'data', 'clean',
   str_c('all_participants_long_main_', study_stage, '.csv')),
   delim = ';')
 

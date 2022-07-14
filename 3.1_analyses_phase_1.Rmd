@@ -32,8 +32,8 @@ most_recent <- max(str_extract(all_complete_tables, '\\d{4}-\\d{2}-\\d{2}'))
 complete_table <- read_delim(file.path('Output', 'Tables',
   str_subset(all_complete_tables, most_recent)), delim = ';')
 
-dat_main_long <- read_delim(file.path('..', 'Data', 'Clean',
-  'all_participants_long_main_main_study.csv'), delim = ';', guess_max = 5000)
+dat_main_long <- read_delim(file.path('..', 'data', 'clean',
+  'all_participants_long_main_study.csv'), delim = ';', guess_max = 5000)
 ```
 
 The following file presents the analyses as they are reported in the main paper and roughtly in the order in which they are reported in the paper.
@@ -628,14 +628,13 @@ Uncomment the `updating_type != 'Wrong'` in the first filter statement to produc
 ```{r updating_baseline_bars, message = FALSE}
 dat_prepared <- dat_main_long %>%
   filter(position_end_of_last_period != 'No Returns',
-         # updating_type != 'Wrong',
-         i_block < 2) %>%
+    # updating_type != 'Wrong',
+    i_block < 2,
+    !is.na(updated_from)) %>%
   mutate(target_measure = # belief_bayes_residual)
-    belief_diff_bayes_corrected_flipped / 100)
-
-dat_prepared_1 <- dat_prepared %>%
-  filter(position_end_of_last_period != 'Not Invested') %>%
-  group_by(position_end_of_last_period, price_move_from_last_corrected) %>%
+    belief_diff_bayes_corrected_flipped / 100,
+    updated_from = fct_relevel(updated_from, 'Not Invested')) %>%
+  group_by(updated_from) %>%
   summarise(mean_update = mean(
               target_measure, na.rm = TRUE),
             SE = sd(target_measure, na.rm = TRUE) /
@@ -643,35 +642,14 @@ dat_prepared_1 <- dat_prepared %>%
             CI_90_lower = mean_update - SE * qt(.95, n()),
             CI_90_upper = mean_update + SE * qt(.95, n()))
 
-dat_prepared_2 <- dat_prepared %>%
-  filter(position_end_of_last_period == 'Not Invested') %>%
-  summarise(mean_update = mean(
-              target_measure, na.rm = TRUE),
-            SE = sd(target_measure, na.rm = TRUE) /
-              sqrt(n()),
-            CI_90_lower = mean_update - SE * qt(.95, n()),
-            CI_90_upper = mean_update + SE * qt(.95, n())) %>%
-  add_column(tibble(position_end_of_last_period = 'Not Invested',
-    price_move_from_last_corrected = ''))
-
-dat_prepared <- full_join(dat_prepared_1, dat_prepared_2) %>%
-  add_column(width = c(1, 1, 1, 1, .5) * .95)
-
-this_col_set <- c('lightgrey', 'darkgrey', '#666666')
-
 ggplot(dat_prepared,
-       aes(x =  fct_relevel(position_end_of_last_period,
-          'Not Invested', 'Gain', 'Loss'),
-          y = mean_update, fill = price_move_from_last_corrected,
-          width = width)) +
-  geom_bar(stat = 'identity', position = position_dodge()) +
+       aes(x = updated_from,
+        y = mean_update)) +
+  geom_bar(stat = 'identity', position = position_dodge(), fill = '#999999') +
   geom_errorbar(aes(ymin = CI_90_lower, ymax = CI_90_upper),
                     width = .1, color = 'black',
                     position = position_dodge(1)) +
-  scale_fill_manual(name = 'Price Move', values = this_col_set[1:3],
-    breaks = c('Favorable', 'Unfavorable')) +
-  labs(x = 'Position',
-    y = 'Average Corrected Belief Update') +
+  labs(x = 'Position', y = 'Average Corrected Belief Update') +
   theme(text = element_text(size = 16))
 
 ggsave('updating_baseline_wrong_included_bars.pdf',  device = 'pdf',
@@ -683,27 +661,17 @@ Checking whether there is an interaction in the updating during the first two bl
 ```{r updating_baseline_test}
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
-         position_end_of_last_period %in% c('Gain', 'Loss'),
-         # !excluded,
-         # updating_type != 'Wrong'
-         ) %>%
-  mutate(price_move_from_last_corrected = dplyr::recode(
-      price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
-    position_end_of_last_period = dplyr::recode(
-      position_end_of_last_period, 'Loss' = 0, 'Gain' = 1),
-    belief_diff_bayes_corrected_flipped = belief_diff_bayes_corrected_flipped / 100) %>%
+    # updating_type != 'Wrong',
+    updated_from  != 'Not Invested') %>%
+  mutate(favorable_update = str_detect(updated_from, 'Favorable'),
+    gain_position = str_detect(updated_from, 'Gain'),
+    belief_update = belief_diff_bayes_corrected_flipped / 100) %>%
   left_join(dplyr::select(complete_table, participant_code, ravens_matrices_score),
     by = 'participant_code')
 
-belief_updates_baseline <- lm(belief_diff_bayes_corrected_flipped ~
-  position_end_of_last_period * price_move_from_last_corrected + age + gender,
-  # position_end_of_last_period : price_move_from_last_corrected : age,
-   data = dat_prepared)
-coeftest(belief_updates_baseline,
-         vcovCL(belief_updates_baseline,
-           cluster = ~dat_prepared$participant_code))
-
-summary(belief_updates_baseline)
+this_model <- lm(belief_update ~ favorable_update * gain_position + age + gender,
+  data = dat_prepared)
+coeftest(this_model, vcovCL(this_model, cluster = ~ dat_prepared$participant_code))
 ```
 _(robust to excluding inattentives)_
 
@@ -711,26 +679,16 @@ Doing the same test but this time including the Bayesian probability as a predic
 ```{r update_baseline_uncorrected_tests}
 dat_prepared <- dat_main_long %>%
   filter(i_block < 2,
-         updating_type != 'Wrong') %>%
-  mutate(inv_dummy = position_end_of_last_period != 'Not Invested',
-    price_move = dplyr::recode(
-      price_move_from_last_corrected, 'Unfavorable' = 0, 'Favorable' = 1),
-    position = dplyr::recode(
-      position_end_of_last_period, 'Loss' = 0, 'Gain' = 1, .default = 999),
-    bayes_diff_flipped = bayes_diff_flipped * 100)
+    # updating_type != 'Wrong',
+    updated_from  != 'Not Invested') %>%
+  mutate(favorable_update = str_detect(updated_from, 'Favorable'),
+    gain_position = str_detect(updated_from, 'Gain'),
+    bayes_flipped = bayes_diff_flipped * 100)
 
-beliefs_by_inv <- lm(belief_diff_flipped ~
-  bayes_diff_flipped * inv_dummy, data = dat_prepared)
-coeftest(beliefs_by_inv,
-         vcovCL(beliefs_by_inv,
-           cluster = ~dat_prepared$participant_code))
-
-beliefs_test_uncor <- lm(belief_diff_flipped ~
-  position * price_move + bayes_diff_flipped,
-  data = dplyr::filter(dat_prepared, position < 2))
-coeftest(beliefs_test_uncor,
-         vcovCL(beliefs_test_uncor,
-           cluster = ~dplyr::filter(dat_prepared, position < 2)$participant_code))
+this_model <- lm(belief_diff_flipped ~
+  favorable_update * gain_position + bayes_flipped,
+  data = dat_prepared)
+coeftest(this_model, vcovCL(this_model, cluster = ~ dat_prepared$participant_code))
 
 ```
 

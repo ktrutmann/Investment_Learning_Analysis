@@ -2,7 +2,7 @@ library(tidyverse)
 
 # Loading Data: ################################################################
 
-study_stage <- 'param_recov'  # With what part of the study are we dealing here?
+study_stage <- 'study'  # With what part of the study are we dealing here?
 clean_dat_path <- file.path('..', 'data', 'clean')
 
 dat_main_long <- read_delim(file.path(clean_dat_path,

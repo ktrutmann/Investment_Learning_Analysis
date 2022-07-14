@@ -2,8 +2,8 @@ library(vroom)
 library(tidyverse)
 
 
-study_stage <- 'param_recov'  # With what part of the study are we dealing here?
-raw_dat_path <- file.path('..', 'data', 'raw', 'param_recov')
+study_stage <- 'study'  # With what part of the study are we dealing here?
+raw_dat_path <- file.path('..', 'data', 'raw', 'main')
 clean_dat_path <- file.path('..', 'data', 'clean')
 
 all_dat <- vroom(file.path(raw_dat_path,
