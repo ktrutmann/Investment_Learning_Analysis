@@ -60,7 +60,7 @@ knitr::kable(round(prop.table(table(complete_table$gender)) * 100, 2),
 knitr::kable(round(prop.table(table(complete_table$investment_experience)) * 100, 2),
   col.names = c('Investment Experience', 'Proportion'))
 
-round(sum(complete_table$is_student == 'Ja') * 100, 2)
+round(mean(complete_table$is_student == 'Ja') * 100, 2)
 
 sink(file.path('Output', 'Tables', 'demographics.txt'))
 complete_table %>%
@@ -131,6 +131,13 @@ dat_main_long %>%
   knitr::kable()
 ```
 
+```{r most_not_inv}
+dat_main_long %>%
+  group_by(participant_code) %>%
+  summarize(n_inv = sum(hold != 0, na.rm = TRUE)) %>%
+  arrange(n_inv)
+```
+
 Average (and SD) number of transactions in the first phase:
 ```{r avg_transaction, message = FALSE}
 dat_main_long %>%
@@ -144,6 +151,23 @@ dat_main_long %>%
     average_rational_transactions_sd = sd(rational_transactions_pp)) %>%
   knitr::kable()
 ```
+
+Check whether there were "wealth effects" in the second block (still first phase) caused by the earnings of the first block.
+```{r wealth_effect_check}
+ggplot(complete_table, aes(hit_rate_1, n_holds_2)) +
+  geom_point()
+
+derp <- complete_table %>%
+  mutate(n_not_not_inv_1 = n_holds_1 + n_shorts_1,
+    n_not_not_inv_2 = n_holds_2 + n_shorts_2,
+    hit_norm = (hit_rate_1 - mean(hit_rate_1)) / sd(hit_rate_1))
+
+lm(n_not_not_inv_2 ~ hit_norm + n_not_not_inv_1, data = derp) %>%
+  summary()
+
+cor.test(complete_table$hit_rate_1, complete_table$n_holds_2)
+```
+
 
 Average (and SD) number of "jumps" in the first phase:
 ```{r avg_jumps, message = FALSE}

@@ -57,7 +57,7 @@ outcome_table_vars <- outcome_table_vars %>%
   expand.grid(1:n_blocks) %>%
   apply(1, paste, collapse = '_')
 outcome_table_vars <- c(outcome_table_vars, 'ravens_matrices_score',
-    'participant_payoff')
+    'participant_payoff', 'participant_code')
 outcome_table <- as_tibble(matrix(NA, ncol = length(outcome_table_vars),
                              nrow = n_subj,
                              dimnames = list(NULL, outcome_table_vars))) %>%
