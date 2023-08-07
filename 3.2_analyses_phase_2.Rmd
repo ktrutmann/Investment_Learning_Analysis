@@ -225,6 +225,21 @@ ggsave('updating_treatments_wrong_excluded_bars.pdf',  device = 'pdf',
   width = 10, height = 7, path = file.path('Output', 'Plots', 'Bars'))
 ```
 
+```{r over-updating-phase-2}
+dat_prepared <- dat_main_long %>%
+  filter(i_block > 1,
+    main_condition == "probs_shown")
+
+summarize(dat_prepared,
+  avg_update = mean(belief_diff_bayes_corrected_flipped, na.rm = TRUE),
+  sd_update = sd(belief_diff_bayes_corrected_flipped, na.rm = TRUE))
+
+m1 <- lm(belief_diff_bayes_corrected_flipped ~ 1,
+  data = dat_prepared)
+coeftest(m1, vcovCL(m1, cluster = ~dat_prepared$participant_code))
+
+```
+
 
 <!-- #################################################################### -->
 # The Effects of Providing Information on Trades

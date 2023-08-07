@@ -302,7 +302,7 @@ de_table$rational_de_diff_12_34 <-
 demographics_table <- bind_rows(demographics_list)
 
 complete_table <- bind_cols(de_table, rt_table,
-  outcome_table, demographics_table)
+  select(outcome_table, -"participant_code"), demographics_table)
 
 
 # Exclusion ########################################################

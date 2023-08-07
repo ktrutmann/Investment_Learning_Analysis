@@ -56,8 +56,8 @@ dat_prepared <- complete_table %>%
             lower = mean(de_diff_12_34) - CI_90,
             upper = mean(de_diff_12_34) + CI_90)
 
-ggplot(dat_prepared, aes(x = main_condition, y = mean_DE,
-  fill = main_condition)) +
+ggplot(dat_prepared, aes(x = main_condition, y = mean_DE)) +
+  # fill = main_condition)) +
   geom_bar(stat = 'identity') +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = .05, #color = 'darkred'
     ) +
@@ -65,8 +65,8 @@ ggplot(dat_prepared, aes(x = main_condition, y = mean_DE,
   #         'Treatment minus Baseline Blocks, corrected for benchmark') +
   labs(x = 'Condition', y = 'Difference in DE Distance to Benchmark') +
   scale_x_discrete(labels = c('Baseline', 'Partial Info.', 'Full Info.')) +
-  scale_fill_manual(values = c(rgb(0.77, 0.92, 0.92),
-    rgb(0.656, 0.856, 0.836), rgb(0.56, 0.76, 0.74))) +
+  # scale_fill_manual(values = c(rgb(0.77, 0.92, 0.92),
+    # rgb(0.656, 0.856, 0.836), rgb(0.56, 0.76, 0.74))) +
   annotate('text', 2, -.21, label = '*', size = 12) +
   annotate('text', 2, -.85, label = '*', size = 12) +
   annotate('text', 3, -.77, label = '*', size = 12) +
